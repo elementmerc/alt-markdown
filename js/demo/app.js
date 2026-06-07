@@ -32,6 +32,14 @@ First tab content.
 Second tab content, with **bold** text.
 :::
 ::::
+
+## A diagram
+
+\`\`\`diagram
+graph TD
+  A[Source] --> B[Render]
+  B --> C[Sandboxed iframe]
+\`\`\`
 `;
 
 await init();
