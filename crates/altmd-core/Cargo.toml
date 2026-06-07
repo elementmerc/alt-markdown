@@ -16,6 +16,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 altmd-parser.workspace = true
+proptest.workspace = true
 serde = { workspace = true }
 serde_json.workspace = true
 

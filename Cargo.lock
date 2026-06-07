@@ -41,6 +41,7 @@ dependencies = [
  "altmd-ast",
  "altmd-parser",
  "altmd-sanitize",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror",
