@@ -1,0 +1,13 @@
+# Hello, alt-markdown
+
+This is a plain CommonMark document, and it already renders as alt-markdown
+because the format is a strict superset.
+
+- Lists work.
+- **Bold** and _emphasis_ work.
+- `inline code` works.
+
+> Blockquotes work too.
+
+Rich components (callouts, charts, diagrams) arrive as the standard library lands
+in later phases. Until then, this file renders identically in any markdown reader.

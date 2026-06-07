@@ -1,0 +1,34 @@
+# alt-markdown kitchen sink
+
+A demonstration document. In Phase 0 it exercises core CommonMark; later phases
+add the component examples (callouts, tabs, charts, diagrams) so this file becomes
+the end-to-end demo rendered by a single script tag.
+
+## Text
+
+Paragraphs with **bold**, _emphasis_, `code`, and [links](https://example.com).
+
+## Lists
+
+1. Ordered item one.
+2. Ordered item two.
+   - Nested unordered item.
+
+## Code
+
+```rust
+fn main() {
+    println!("hello, alt-markdown");
+}
+```
+
+## Table
+
+| Feature      | Status      |
+|--------------|-------------|
+| CommonMark   | working     |
+| Components   | coming soon |
+
+## Quote
+
+> The source stays readable; the render gets richer.
