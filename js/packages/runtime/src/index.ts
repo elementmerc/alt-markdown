@@ -7,6 +7,13 @@
 
 export const VERSION = "0.1.0";
 
+export {
+  createSandboxedFrame,
+  buildSrcdoc,
+  type SandboxOptions,
+} from "./sandbox";
+export { sanitizeHtml } from "./sanitize";
+
 /**
  * Bootstrap the runtime against a root node. Phase 4 wires the WASM core and the
  * component registry; this is intentionally minimal in Phase 0.
