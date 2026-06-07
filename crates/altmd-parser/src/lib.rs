@@ -10,7 +10,7 @@ pub mod error;
 
 pub use error::ParseError;
 
-use altmd_ast::{AstError, Block, Document, Inline, List, Parser};
+use altmd_ast::{AstError, Attrs, Block, Component, ComponentBody, Document, Inline, List, Parser};
 use comrak::nodes::{AstNode, ListType, NodeValue};
 
 /// Render CommonMark `source` to HTML using comrak with safe defaults: raw HTML
@@ -94,10 +94,23 @@ fn map_block<'a>(node: &'a AstNode<'a>) -> Result<Block, AstError> {
                 items,
             }))
         }
-        NodeValue::CodeBlock(cb) => Ok(Block::CodeBlock {
-            info: cb.info.clone(),
-            literal: cb.literal.clone(),
-        }),
+        NodeValue::CodeBlock(cb) => {
+            let name = cb.info.split_whitespace().next().unwrap_or_default();
+            if let Some(spec) = registry::lookup(name) {
+                if spec.kind == registry::Kind::Fence {
+                    let rest = cb.info.get(name.len()..).unwrap_or_default();
+                    return Ok(Block::Component(Component {
+                        name: name.to_owned(),
+                        attrs: parse_attrs(rest),
+                        body: ComponentBody::Raw(cb.literal.clone()),
+                    }));
+                }
+            }
+            Ok(Block::CodeBlock {
+                info: cb.info.clone(),
+                literal: cb.literal.clone(),
+            })
+        }
         NodeValue::ThematicBreak => Ok(Block::ThematicBreak),
         NodeValue::HtmlBlock(hb) => Ok(Block::HtmlBlock(hb.literal.clone())),
         other => Err(AstError::Malformed(format!(
@@ -130,6 +143,135 @@ fn map_inline<'a>(node: &'a AstNode<'a>) -> Result<Inline, AstError> {
             "unsupported inline node: {other:?}"
         ))),
     }
+}
+
+/// The standard-library component registry: which names are components, whether
+/// they are written as directives or fences, and whether they render sandboxed.
+mod registry {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum Kind {
+        Directive,
+        Fence,
+    }
+
+    pub(crate) struct Spec {
+        pub(crate) name: &'static str,
+        pub(crate) kind: Kind,
+        #[allow(
+            dead_code,
+            reason = "consumed by the renderer/sandbox in a later phase"
+        )]
+        pub(crate) sandboxed: bool,
+    }
+
+    const SPECS: &[Spec] = &[
+        Spec {
+            name: "chart",
+            kind: Kind::Fence,
+            sandboxed: false,
+        },
+        Spec {
+            name: "math",
+            kind: Kind::Fence,
+            sandboxed: false,
+        },
+        Spec {
+            name: "diagram",
+            kind: Kind::Fence,
+            sandboxed: true,
+        },
+        Spec {
+            name: "callout",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
+        Spec {
+            name: "tabs",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
+        Spec {
+            name: "accordion",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
+        Spec {
+            name: "columns",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
+        Spec {
+            name: "embed",
+            kind: Kind::Directive,
+            sandboxed: true,
+        },
+        Spec {
+            name: "sandbox",
+            kind: Kind::Directive,
+            sandboxed: true,
+        },
+    ];
+
+    pub(crate) fn lookup(name: &str) -> Option<&'static Spec> {
+        SPECS.iter().find(|spec| spec.name == name)
+    }
+}
+
+/// Parse an attribute string `{#id .class key=value}` (the braces are optional,
+/// as in a fence info string) into [`Attrs`].
+fn parse_attrs(input: &str) -> Attrs {
+    let trimmed = input.trim();
+    let inner = trimmed
+        .strip_prefix('{')
+        .and_then(|s| s.strip_suffix('}'))
+        .unwrap_or(trimmed);
+    let mut attrs = Attrs::default();
+    for token in tokenize(inner) {
+        if let Some(id) = token.strip_prefix('#') {
+            attrs.id = Some(id.to_owned());
+        } else if let Some(class) = token.strip_prefix('.') {
+            attrs.classes.push(class.to_owned());
+        } else if let Some((key, value)) = token.split_once('=') {
+            attrs.pairs.push((key.to_owned(), value.to_owned()));
+        } else if !token.is_empty() {
+            attrs.classes.push(token);
+        }
+    }
+    attrs
+}
+
+/// Split an attribute string on whitespace, honouring single and double quotes
+/// so a quoted value such as `title="a b"` stays one token (quotes removed).
+fn tokenize(input: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut quote: Option<char> = None;
+    for ch in input.chars() {
+        match quote {
+            Some(q) => {
+                if ch == q {
+                    quote = None;
+                } else {
+                    current.push(ch);
+                }
+            }
+            None => {
+                if ch == '"' || ch == '\'' {
+                    quote = Some(ch);
+                } else if ch.is_whitespace() {
+                    if !current.is_empty() {
+                        tokens.push(std::mem::take(&mut current));
+                    }
+                } else {
+                    current.push(ch);
+                }
+            }
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    tokens
 }
 
 #[cfg(test)]
@@ -233,5 +375,37 @@ mod tests {
                 literal: "fn main() {}\n".into(),
             }]
         );
+    }
+
+    #[test]
+    fn maps_fence_component() {
+        let doc = parse("```chart kind=line\njan,1\nfeb,2\n```");
+        assert_eq!(
+            doc.blocks,
+            vec![Block::Component(altmd_ast::Component {
+                name: "chart".into(),
+                attrs: altmd_ast::Attrs {
+                    id: None,
+                    classes: vec![],
+                    pairs: vec![("kind".into(), "line".into())],
+                },
+                body: altmd_ast::ComponentBody::Raw("jan,1\nfeb,2\n".into()),
+            })]
+        );
+    }
+
+    #[test]
+    fn unregistered_fence_stays_code_block() {
+        let doc = parse("```python\nprint(1)\n```");
+        assert!(matches!(doc.blocks.first(), Some(Block::CodeBlock { .. })));
+    }
+
+    #[test]
+    fn parses_attributes() {
+        let attrs = super::parse_attrs("{#hero .a .b title=\"a b\" kind=line}");
+        assert_eq!(attrs.id.as_deref(), Some("hero"));
+        assert_eq!(attrs.classes, vec!["a".to_string(), "b".to_string()]);
+        assert_eq!(attrs.get("title"), Some("a b"));
+        assert_eq!(attrs.get("kind"), Some("line"));
     }
 }

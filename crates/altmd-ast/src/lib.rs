@@ -5,8 +5,10 @@
 //! touching the components or the converter. Phase 1 covers the CommonMark node
 //! set; component nodes for the hybrid grammar arrive in Phase 2.
 
+pub mod component;
 pub mod error;
 
+pub use component::{Attrs, Component, ComponentBody};
 pub use error::AstError;
 
 /// A byte range into the original source, available for a future lossless
@@ -55,6 +57,8 @@ pub enum Block {
     ThematicBreak,
     /// A raw HTML block. Sanitised before rendering (Phase 3).
     HtmlBlock(String),
+    /// A standard-library component (hybrid-grammar extension).
+    Component(Component),
 }
 
 /// An ordered or unordered list. Each item is a sequence of blocks.
