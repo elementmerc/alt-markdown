@@ -49,15 +49,18 @@ impl CommonMarkParser {
 
 impl Parser for CommonMarkParser {
     fn parse(&self, source: &str) -> Result<Document, AstError> {
-        let arena = comrak::Arena::new();
-        let options = comrak::Options::default();
-        let root = comrak::parse_document(&arena, source, &options);
-        let blocks = root
-            .children()
-            .map(map_block)
-            .collect::<Result<Vec<_>, _>>()?;
+        let segments = split_directives(source)?;
+        let blocks = segments_to_blocks(&segments)?;
         Ok(Document { blocks })
     }
+}
+
+/// Parse a run of plain CommonMark (between directive fences) into block nodes.
+fn parse_commonmark_blocks(source: &str) -> Result<Vec<Block>, AstError> {
+    let arena = comrak::Arena::new();
+    let options = comrak::Options::default();
+    let root = comrak::parse_document(&arena, source, &options);
+    root.children().map(map_block).collect()
 }
 
 fn map_blocks<'a>(node: &'a AstNode<'a>) -> Result<Vec<Block>, AstError> {
@@ -274,6 +277,167 @@ fn tokenize(input: &str) -> Vec<String> {
     tokens
 }
 
+/// A segment of a document: either a run of plain markdown text or a container
+/// directive with its own (recursively segmented) children.
+enum Segment {
+    Text(String),
+    Directive {
+        name: String,
+        attrs: Attrs,
+        children: Vec<Segment>,
+    },
+}
+
+/// A directive frame on the scanner stack. The root frame has `colons == 0`.
+struct Frame {
+    name: String,
+    attrs: Attrs,
+    colons: usize,
+    segments: Vec<Segment>,
+    text: Vec<String>,
+}
+
+impl Frame {
+    fn root() -> Self {
+        Self {
+            name: String::new(),
+            attrs: Attrs::default(),
+            colons: 0,
+            segments: Vec::new(),
+            text: Vec::new(),
+        }
+    }
+
+    fn new(name: String, attrs: Attrs, colons: usize) -> Self {
+        Self {
+            name,
+            attrs,
+            colons,
+            segments: Vec::new(),
+            text: Vec::new(),
+        }
+    }
+
+    fn flush_text(&mut self) {
+        if self.text.is_empty() {
+            return;
+        }
+        let text = std::mem::take(&mut self.text).join("\n");
+        self.segments.push(Segment::Text(text));
+    }
+}
+
+/// Recognise a container-directive opening line: three or more colons followed by
+/// a name and an optional attribute block, for example `:::callout{type=warn}`.
+fn parse_open(line: &str) -> Option<(usize, String, Attrs)> {
+    let trimmed = line.trim_end();
+    let colons = trimmed.chars().take_while(|&c| c == ':').count();
+    if colons < 3 {
+        return None;
+    }
+    let rest = trimmed.get(colons..)?.trim_start();
+    let name: String = rest
+        .chars()
+        .take_while(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    if !name.chars().next().is_some_and(char::is_alphabetic) {
+        return None;
+    }
+    let after = rest.get(name.len()..).unwrap_or_default().trim();
+    Some((colons, name, parse_attrs(after)))
+}
+
+/// Recognise a container-directive closing line: a line of three or more colons
+/// and nothing else.
+fn parse_close(line: &str) -> Option<usize> {
+    let trimmed = line.trim();
+    if trimmed.len() >= 3 && trimmed.chars().all(|c| c == ':') {
+        Some(trimmed.len())
+    } else {
+        None
+    }
+}
+
+/// Split `source` into a tree of text and directive segments. A directive is
+/// closed by a colon run of the same length as its opener (innermost first), so
+/// directives nest. An unclosed directive is an error.
+fn split_directives(source: &str) -> Result<Vec<Segment>, AstError> {
+    let mut stack: Vec<Frame> = vec![Frame::root()];
+
+    for line in source.lines() {
+        if let Some((colons, name, attrs)) = parse_open(line) {
+            if let Some(top) = stack.last_mut() {
+                top.flush_text();
+            }
+            stack.push(Frame::new(name, attrs, colons));
+            continue;
+        }
+
+        if let Some(colons) = parse_close(line) {
+            let matches_top = stack
+                .last()
+                .is_some_and(|frame| frame.colons == colons && frame.colons != 0);
+            if matches_top {
+                if let Some(mut frame) = stack.pop() {
+                    frame.flush_text();
+                    let segment = Segment::Directive {
+                        name: frame.name,
+                        attrs: frame.attrs,
+                        children: frame.segments,
+                    };
+                    if let Some(parent) = stack.last_mut() {
+                        parent.segments.push(segment);
+                    }
+                }
+                continue;
+            }
+        }
+
+        if let Some(top) = stack.last_mut() {
+            top.text.push(line.to_owned());
+        }
+    }
+
+    if stack.len() != 1 {
+        return Err(AstError::Malformed("unclosed directive".to_owned()));
+    }
+    let Some(mut root) = stack.pop() else {
+        return Err(AstError::Malformed(
+            "internal: empty directive stack".to_owned(),
+        ));
+    };
+    root.flush_text();
+    Ok(root.segments)
+}
+
+/// Turn a segment tree into block nodes, validating directive names against the
+/// registry. An unknown or non-directive name is a defined error, never silent.
+fn segments_to_blocks(segments: &[Segment]) -> Result<Vec<Block>, AstError> {
+    let mut blocks = Vec::new();
+    for segment in segments {
+        match segment {
+            Segment::Text(text) => blocks.extend(parse_commonmark_blocks(text)?),
+            Segment::Directive {
+                name,
+                attrs,
+                children,
+            } => {
+                let spec = registry::lookup(name)
+                    .ok_or_else(|| AstError::Malformed(format!("unknown directive: {name}")))?;
+                if spec.kind != registry::Kind::Directive {
+                    return Err(AstError::Malformed(format!("'{name}' is not a directive")));
+                }
+                blocks.push(Block::Component(Component {
+                    name: name.clone(),
+                    attrs: attrs.clone(),
+                    body: ComponentBody::Children(segments_to_blocks(children)?),
+                }));
+            }
+        }
+    }
+    Ok(blocks)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{CommonMarkParser, render_html};
@@ -407,5 +571,68 @@ mod tests {
         assert_eq!(attrs.classes, vec!["a".to_string(), "b".to_string()]);
         assert_eq!(attrs.get("title"), Some("a b"));
         assert_eq!(attrs.get("kind"), Some("line"));
+    }
+
+    #[test]
+    fn maps_callout_directive() {
+        let doc = parse(":::callout{type=warning}\nHeads up.\n:::");
+        assert_eq!(
+            doc.blocks,
+            vec![Block::Component(altmd_ast::Component {
+                name: "callout".into(),
+                attrs: altmd_ast::Attrs {
+                    id: None,
+                    classes: vec![],
+                    pairs: vec![("type".into(), "warning".into())],
+                },
+                body: altmd_ast::ComponentBody::Children(vec![Block::Paragraph(vec![
+                    Inline::Text("Heads up.".into()),
+                ])]),
+            })]
+        );
+    }
+
+    #[test]
+    fn nests_directives() {
+        let doc = parse(":::tabs\n:::callout\nhi\n:::\n:::");
+        let Some(Block::Component(tabs)) = doc.blocks.first() else {
+            unreachable!("expected a tabs component")
+        };
+        assert_eq!(tabs.name, "tabs");
+        let altmd_ast::ComponentBody::Children(children) = &tabs.body else {
+            unreachable!("expected children")
+        };
+        assert!(matches!(children.first(), Some(Block::Component(c)) if c.name == "callout"));
+    }
+
+    #[test]
+    fn orders_text_around_directives() {
+        let doc = parse("before\n\n:::callout\nin\n:::\n\nafter");
+        assert_eq!(doc.blocks.len(), 3);
+        assert!(matches!(doc.blocks[0], Block::Paragraph(_)));
+        assert!(matches!(doc.blocks[1], Block::Component(_)));
+        assert!(matches!(doc.blocks[2], Block::Paragraph(_)));
+    }
+
+    #[test]
+    fn unknown_directive_is_an_error() {
+        assert!(CommonMarkParser::new().parse(":::bogus\nx\n:::").is_err());
+    }
+
+    #[test]
+    fn fence_name_used_as_directive_is_an_error() {
+        assert!(CommonMarkParser::new().parse(":::chart\nx\n:::").is_err());
+    }
+
+    #[test]
+    fn unclosed_directive_is_an_error() {
+        assert!(CommonMarkParser::new().parse(":::callout\nx").is_err());
+    }
+
+    #[test]
+    fn plain_markdown_is_unchanged_by_the_splitter() {
+        let src = "# H\n\npara with *em*\n\n- a\n- b";
+        let direct = super::parse_commonmark_blocks(src).expect("direct parse");
+        assert_eq!(parse(src).blocks, direct);
     }
 }
