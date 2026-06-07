@@ -410,6 +410,52 @@ mod tests {
     }
 
     #[test]
+    fn neutralises_hostile_content_inside_components() {
+        // Hostile payloads inside component fences and bodies must not produce a
+        // live tag or event handler: a raw component body is escaped, a markdown
+        // body is sanitised, and a component attribute is escaped.
+        let cases = [
+            "```chart\nm,<script>alert(1)</script>\n```",
+            ":::callout\n<img src=x onerror=alert(1)>\n:::",
+            "::::tabs\n:::tab{title=\"x\\\"><script>alert(1)</script>\"}\nhi\n:::\n::::",
+            "```diagram\n<script>alert(1)</script>\n```",
+        ];
+        for case in cases {
+            let html = render(case);
+            assert!(!html.contains("<script"), "script leaked from: {case}\n{html}");
+            let handler = regex_lite_event_handler(&html);
+            assert!(!handler, "event handler leaked from: {case}\n{html}");
+        }
+    }
+
+    /// True if the HTML contains an inline event handler (`<tag ... on*=`).
+    /// A small hand-rolled check to avoid pulling in a regex dependency.
+    fn regex_lite_event_handler(html: &str) -> bool {
+        let lower = html.to_ascii_lowercase();
+        let mut in_tag = false;
+        let bytes = lower.as_bytes();
+        for (i, &b) in bytes.iter().enumerate() {
+            match b {
+                b'<' => in_tag = true,
+                b'>' => in_tag = false,
+                b'o' if in_tag => {
+                    let rest = &lower[i..];
+                    if rest.starts_with("on")
+                        && rest[2..]
+                            .find('=')
+                            .map(|eq| lower[i + 2..i + 2 + eq].chars().all(|c| c.is_ascii_alphabetic()))
+                            .unwrap_or(false)
+                    {
+                        return true;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    #[test]
     fn sanitises_raw_html_blocks() {
         let html = render("<div onclick=\"steal()\">hi</div>");
         assert!(!html.to_lowercase().contains("onclick"), "{html}");
