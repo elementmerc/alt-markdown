@@ -39,7 +39,9 @@ fn main() -> Result<()> {
         Command::Render { file } => {
             let source =
                 fs::read_to_string(&file).with_context(|| format!("reading {}", file.display()))?;
-            print!("{}", altmd_core::to_html(&source));
+            let html = altmd_core::render(&source)
+                .with_context(|| format!("rendering {}", file.display()))?;
+            print!("{html}");
             Ok(())
         }
         Command::Ast { .. } | Command::Check { .. } => {

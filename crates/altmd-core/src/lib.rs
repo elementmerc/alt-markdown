@@ -7,8 +7,10 @@
 //! this same API.
 
 pub mod error;
+pub mod render;
 
 pub use error::CoreError;
+pub use render::render_document;
 
 // One facade: downstream crates depend on these re-exports, not the sub-crates.
 pub use altmd_ast::{Block, Document, Inline, List, Parser, Serializer, Span};
@@ -32,6 +34,16 @@ pub fn parse(source: &str) -> Result<Document, CoreError> {
     CommonMarkParser::new()
         .parse(source)
         .map_err(CoreError::from)
+}
+
+/// Render alt-markdown `source` to component-aware HTML: parse to the AST, then
+/// render components as `alt-<name>` custom elements wrapping their static
+/// fallback. This is the output the runtime upgrades in the browser.
+///
+/// # Errors
+/// Returns [`CoreError`] if the source contains an invalid directive.
+pub fn render(source: &str) -> Result<String, CoreError> {
+    Ok(render_document(&parse(source)?))
 }
 
 #[cfg(test)]
