@@ -13,6 +13,15 @@ pub use error::ParseError;
 use altmd_ast::{AstError, Attrs, Block, Component, ComponentBody, Document, Inline, List, Parser};
 use comrak::nodes::{AstNode, ListType, NodeValue};
 
+/// Maximum nesting depth the parser accepts, for directives and for the block and
+/// inline tree alike. Real documents nest a handful of levels deep; tens of
+/// thousands of levels is pathological input that would otherwise overflow the
+/// stack during the recursive AST walk and abort the process. We reject anything
+/// deeper with a defined error instead of crashing, per the engineering baseline
+/// (section 2.1: hard, documented resource caps on every parser). The limit sits
+/// far above any plausible real document and far below the overflow threshold.
+pub const MAX_NESTING_DEPTH: usize = 256;
+
 /// Render CommonMark `source` to HTML using comrak with safe defaults: raw HTML
 /// and dangerous links are suppressed (comrak's `unsafe_` option stays off).
 #[must_use]
@@ -60,26 +69,39 @@ fn parse_commonmark_blocks(source: &str) -> Result<Vec<Block>, AstError> {
     let arena = comrak::Arena::new();
     let options = comrak::Options::default();
     let root = comrak::parse_document(&arena, source, &options);
-    root.children().map(map_block).collect()
+    root.children().map(|n| map_block(n, 0)).collect()
 }
 
-fn map_blocks<'a>(node: &'a AstNode<'a>) -> Result<Vec<Block>, AstError> {
-    node.children().map(map_block).collect()
+fn map_blocks<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Vec<Block>, AstError> {
+    node.children().map(|n| map_block(n, depth)).collect()
 }
 
-fn map_inlines<'a>(node: &'a AstNode<'a>) -> Result<Vec<Inline>, AstError> {
-    node.children().map(map_inline).collect()
+fn map_inlines<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Vec<Inline>, AstError> {
+    node.children().map(|n| map_inline(n, depth)).collect()
 }
 
-fn map_block<'a>(node: &'a AstNode<'a>) -> Result<Block, AstError> {
+/// The shared depth guard: comrak parses iteratively, but our recursive walk of
+/// its tree would overflow the stack on pathologically nested input, so we bound
+/// it. See [`MAX_NESTING_DEPTH`].
+fn check_depth(depth: usize) -> Result<(), AstError> {
+    if depth > MAX_NESTING_DEPTH {
+        return Err(AstError::Malformed(format!(
+            "nesting exceeds the maximum depth of {MAX_NESTING_DEPTH}"
+        )));
+    }
+    Ok(())
+}
+
+fn map_block<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Block, AstError> {
+    check_depth(depth)?;
     let data = node.data.borrow();
     match &data.value {
         NodeValue::Heading(h) => Ok(Block::Heading {
             level: h.level,
-            content: map_inlines(node)?,
+            content: map_inlines(node, depth + 1)?,
         }),
-        NodeValue::Paragraph => Ok(Block::Paragraph(map_inlines(node)?)),
-        NodeValue::BlockQuote => Ok(Block::BlockQuote(map_blocks(node)?)),
+        NodeValue::Paragraph => Ok(Block::Paragraph(map_inlines(node, depth + 1)?)),
+        NodeValue::BlockQuote => Ok(Block::BlockQuote(map_blocks(node, depth + 1)?)),
         NodeValue::List(list) => {
             let ordered = matches!(list.list_type, ListType::Ordered);
             let start = if ordered {
@@ -89,7 +111,7 @@ fn map_block<'a>(node: &'a AstNode<'a>) -> Result<Block, AstError> {
             };
             let items = node
                 .children()
-                .map(map_blocks)
+                .map(|n| map_blocks(n, depth + 1))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Block::List(List {
                 ordered,
@@ -122,22 +144,23 @@ fn map_block<'a>(node: &'a AstNode<'a>) -> Result<Block, AstError> {
     }
 }
 
-fn map_inline<'a>(node: &'a AstNode<'a>) -> Result<Inline, AstError> {
+fn map_inline<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Inline, AstError> {
+    check_depth(depth)?;
     let data = node.data.borrow();
     match &data.value {
         NodeValue::Text(text) => Ok(Inline::Text(text.clone())),
-        NodeValue::Emph => Ok(Inline::Emphasis(map_inlines(node)?)),
-        NodeValue::Strong => Ok(Inline::Strong(map_inlines(node)?)),
+        NodeValue::Emph => Ok(Inline::Emphasis(map_inlines(node, depth + 1)?)),
+        NodeValue::Strong => Ok(Inline::Strong(map_inlines(node, depth + 1)?)),
         NodeValue::Code(code) => Ok(Inline::Code(code.literal.clone())),
         NodeValue::Link(link) => Ok(Inline::Link {
             url: link.url.clone(),
             title: link.title.clone(),
-            content: map_inlines(node)?,
+            content: map_inlines(node, depth + 1)?,
         }),
         NodeValue::Image(link) => Ok(Inline::Image {
             url: link.url.clone(),
             title: link.title.clone(),
-            alt: map_inlines(node)?,
+            alt: map_inlines(node, depth + 1)?,
         }),
         NodeValue::SoftBreak => Ok(Inline::SoftBreak),
         NodeValue::LineBreak => Ok(Inline::HardBreak),
@@ -381,6 +404,14 @@ fn split_directives(source: &str) -> Result<Vec<Segment>, AstError> {
 
     for line in source.lines() {
         if let Some((colons, name, attrs)) = parse_open(line) {
+            // The root frame occupies one slot, so the live directive depth is
+            // stack.len() - 1; cap it before pushing to keep segments_to_blocks'
+            // recursion (and the renderer's) bounded. See MAX_NESTING_DEPTH.
+            if stack.len() > MAX_NESTING_DEPTH {
+                return Err(AstError::Malformed(format!(
+                    "directive nesting exceeds the maximum depth of {MAX_NESTING_DEPTH}"
+                )));
+            }
             if let Some(top) = stack.last_mut() {
                 top.flush_text();
             }
@@ -642,6 +673,38 @@ mod tests {
     #[test]
     fn unclosed_directive_is_an_error() {
         assert!(CommonMarkParser::new().parse(":::callout\nx").is_err());
+    }
+
+    #[test]
+    fn deeply_nested_directives_error_not_crash() {
+        let depth = super::MAX_NESTING_DEPTH + 50;
+        let src = ":::callout\n".repeat(depth) + "x\n" + &":::\n".repeat(depth);
+        let err = CommonMarkParser::new()
+            .parse(&src)
+            .expect_err("deep nesting must be a defined error");
+        assert!(format!("{err}").contains("depth"), "{err}");
+    }
+
+    #[test]
+    fn deeply_nested_blockquotes_error_not_crash() {
+        let src = "> ".repeat(super::MAX_NESTING_DEPTH + 50) + "x\n";
+        assert!(CommonMarkParser::new().parse(&src).is_err());
+    }
+
+    #[test]
+    fn deeply_nested_emphasis_errors_not_crash() {
+        let n = super::MAX_NESTING_DEPTH + 50;
+        let src = "*".repeat(n) + "x" + &"*".repeat(n);
+        // comrak may or may not nest this deeply; if it does, we must not crash.
+        let _ = CommonMarkParser::new().parse(&src);
+    }
+
+    #[test]
+    fn nesting_within_the_limit_is_accepted() {
+        let depth = 40;
+        let src = ":::callout\n".repeat(depth) + "x\n" + &":::\n".repeat(depth);
+        let doc = CommonMarkParser::new().parse(&src).expect("parse");
+        assert_eq!(doc.blocks.len(), 1);
     }
 
     #[test]
