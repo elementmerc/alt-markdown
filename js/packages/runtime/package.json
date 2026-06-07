@@ -1,0 +1,21 @@
+{
+  "name": "@altmd/runtime",
+  "version": "0.1.0",
+  "description": "The zero-build alt-markdown CDN runtime (loads the WASM core, upgrades components).",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

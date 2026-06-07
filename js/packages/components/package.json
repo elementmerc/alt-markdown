@@ -1,0 +1,10 @@
+{
+  "name": "@altmd/components",
+  "version": "0.1.0",
+  "description": "The alt-markdown standard-library Web Components (the richer nine).",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}
