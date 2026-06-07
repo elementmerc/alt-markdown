@@ -1,12 +1,14 @@
 // The standard-library component custom elements.
 //
-// In Phase 4 each component is a minimal upgrade that marks itself enhanced, so
-// the mount-and-upgrade pipeline is real and testable. Phase 5 fills in the rich
-// behaviour and the per-component static fallbacks, and lazy-loads the heavy ones
-// (chart, diagram) via dynamic import. Diagrams and embeds render through the
-// sandboxed iframe (see sandbox.ts), never directly in the host DOM.
+// Each component upgrades its static fallback in place, so removing the runtime
+// leaves a readable document. Tabs become an interactive tablist; diagrams and
+// the escape hatch render inside the sandboxed iframe (sandbox.ts), never in the
+// host DOM. The remaining components are enhanced markers in this phase; chart,
+// math, and rich diagrams gain their libraries (lazy-loaded) as a follow-up.
 
-/** The v1 component names (the "richer nine"); each maps to an `alt-<name>` tag. */
+import { createSandboxedFrame } from "./sandbox";
+
+/** The component names that get an `alt-<name>` custom element. */
 export const V1_COMPONENTS = [
   "callout",
   "tabs",
@@ -19,15 +21,81 @@ export const V1_COMPONENTS = [
   "embed",
 ] as const;
 
-/**
- * Base class for alt-markdown components. The static fallback is already in the
- * light DOM (rendered by the core); upgrading enhances it in place, so removing
- * the runtime leaves a readable document.
- */
+// Sub-component and escape-hatch names also need defining so they upgrade.
+const ALL_COMPONENTS = [...V1_COMPONENTS, "tab", "column", "sandbox"] as const;
+
+/** Base class: marks the element upgraded and runs its enhancement, if any. */
 export class AltElement extends HTMLElement {
   connectedCallback(): void {
     this.setAttribute("data-altmd-upgraded", "");
+    this.enhance();
   }
+
+  // Overridden by components that enhance their fallback.
+  protected enhance(): void {}
+}
+
+/** Tabs: turn the headed sections into an interactive tablist. */
+class TabsElement extends AltElement {
+  protected override enhance(): void {
+    const tabs = this.ownTabs();
+    if (tabs.length === 0) {
+      return;
+    }
+    const tablist = document.createElement("div");
+    tablist.className = "alt-tablist";
+    tablist.setAttribute("role", "tablist");
+    tabs.forEach((tab, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.setAttribute("role", "tab");
+      button.textContent = tab.getAttribute("data-title") ?? `Tab ${String(index + 1)}`;
+      button.addEventListener("click", () => {
+        this.select(index);
+      });
+      tablist.appendChild(button);
+    });
+    this.prepend(tablist);
+    this.select(0);
+  }
+
+  private ownTabs(): HTMLElement[] {
+    return Array.from(this.querySelectorAll("alt-tab")).filter(
+      (tab): tab is HTMLElement => tab.closest("alt-tabs") === this,
+    );
+  }
+
+  private select(index: number): void {
+    this.ownTabs().forEach((tab, position) => {
+      tab.hidden = position !== index;
+    });
+    const buttons = Array.from(this.querySelectorAll(".alt-tablist > button"));
+    buttons.forEach((button, position) => {
+      button.setAttribute("aria-selected", position === index ? "true" : "false");
+    });
+  }
+}
+
+/** Diagram and escape hatch: render the fallback content inside a sandbox. */
+class SandboxedElement extends AltElement {
+  protected override enhance(): void {
+    const frame = createSandboxedFrame({
+      html: this.innerHTML,
+      allowScripts: true,
+      title: this.localName,
+    });
+    this.replaceChildren(frame);
+  }
+}
+
+function baseFor(name: string): typeof AltElement {
+  if (name === "tabs") {
+    return TabsElement;
+  }
+  if (name === "diagram" || name === "sandbox") {
+    return SandboxedElement;
+  }
+  return AltElement;
 }
 
 /**
@@ -35,11 +103,12 @@ export class AltElement extends HTMLElement {
  * it is safe to call on every mount.
  */
 export function registerComponents(): void {
-  for (const name of V1_COMPONENTS) {
+  for (const name of ALL_COMPONENTS) {
     const tag = `alt-${name}`;
     if (customElements.get(tag) === undefined) {
+      const Base = baseFor(name);
       // A fresh subclass per tag: a constructor may back only one element name.
-      customElements.define(tag, class extends AltElement {});
+      customElements.define(tag, class extends Base {});
     }
   }
 }
