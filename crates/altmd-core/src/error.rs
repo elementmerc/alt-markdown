@@ -8,5 +8,5 @@ use thiserror::Error;
 pub enum CoreError {
     /// Parsing failed.
     #[error(transparent)]
-    Parse(#[from] altmd_parser::ParseError),
+    Parse(#[from] altmd_ast::AstError),
 }
