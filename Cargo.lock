@@ -40,6 +40,8 @@ version = "0.1.0"
 dependencies = [
  "altmd-ast",
  "altmd-parser",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 
