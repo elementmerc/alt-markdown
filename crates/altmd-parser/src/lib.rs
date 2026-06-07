@@ -184,6 +184,11 @@ mod registry {
             sandboxed: true,
         },
         Spec {
+            name: "table",
+            kind: Kind::Fence,
+            sandboxed: false,
+        },
+        Spec {
             name: "callout",
             kind: Kind::Directive,
             sandboxed: false,
@@ -194,12 +199,22 @@ mod registry {
             sandboxed: false,
         },
         Spec {
+            name: "tab",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
+        Spec {
             name: "accordion",
             kind: Kind::Directive,
             sandboxed: false,
         },
         Spec {
             name: "columns",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
+        Spec {
+            name: "column",
             kind: Kind::Directive,
             sandboxed: false,
         },

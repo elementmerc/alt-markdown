@@ -89,6 +89,95 @@ fn render_component(component: &Component, out: &mut String) {
     out.push_str(&tag);
     render_attrs(&component.attrs, out);
     out.push('>');
+    render_fallback(component, out);
+    out.push_str(&format!("</{tag}>\n"));
+}
+
+/// Render a component's mandatory static fallback: semantic HTML that reads well
+/// with no runtime, which the JS layer then enhances in place.
+fn render_fallback(component: &Component, out: &mut String) {
+    match component.name.as_str() {
+        "callout" => fallback_callout(component, out),
+        "accordion" => fallback_accordion(component, out),
+        "tabs" => fallback_wrap(component, out, "alt-tabs"),
+        "tab" => fallback_tab(component, out),
+        "columns" | "column" => fallback_wrap(component, out, "alt-stack"),
+        "chart" | "table" => fallback_data_table(component, out),
+        "math" => fallback_math(component, out),
+        "embed" => fallback_embed(component, out),
+        _ => fallback_default(component, out),
+    }
+}
+
+fn render_children(component: &Component, out: &mut String) {
+    if let ComponentBody::Children(blocks) = &component.body {
+        render_blocks(blocks, out);
+    }
+}
+
+fn fallback_callout(component: &Component, out: &mut String) {
+    let kind = component.attrs.get("type").unwrap_or("note");
+    out.push_str(&format!(
+        "<aside class=\"alt-callout alt-callout-{}\" role=\"note\">\n",
+        sanitize_class(kind)
+    ));
+    render_children(component, out);
+    out.push_str("</aside>");
+}
+
+fn fallback_accordion(component: &Component, out: &mut String) {
+    let title = component.attrs.get("title").unwrap_or("Details");
+    out.push_str(&format!(
+        "<details><summary>{}</summary>\n",
+        escape_html(title)
+    ));
+    render_children(component, out);
+    out.push_str("</details>");
+}
+
+fn fallback_tab(component: &Component, out: &mut String) {
+    let title = component.attrs.get("title").unwrap_or("Tab");
+    out.push_str(&format!(
+        "<section class=\"alt-tab\"><h3>{}</h3>\n",
+        escape_html(title)
+    ));
+    render_children(component, out);
+    out.push_str("</section>");
+}
+
+fn fallback_wrap(component: &Component, out: &mut String, class: &str) {
+    out.push_str(&format!("<div class=\"{class}\">\n"));
+    render_children(component, out);
+    out.push_str("</div>");
+}
+
+fn fallback_math(component: &Component, out: &mut String) {
+    if let ComponentBody::Raw(raw) = &component.body {
+        out.push_str(&format!(
+            "<code class=\"alt-math\">{}</code>",
+            escape_html(raw.trim_end())
+        ));
+    }
+}
+
+fn fallback_embed(component: &Component, out: &mut String) {
+    let src = safe_url(component.attrs.get("src").unwrap_or(""));
+    if !src.is_empty() {
+        out.push_str(&format!(
+            "<a href=\"{}\" rel=\"noopener noreferrer\">{}</a>",
+            escape_attr(&src),
+            escape_html(&src)
+        ));
+    }
+}
+
+fn fallback_data_table(component: &Component, out: &mut String) {
+    if let ComponentBody::Raw(raw) = &component.body {
+        render_csv_table(raw, out);
+    }
+}
+
+fn fallback_default(component: &Component, out: &mut String) {
     match &component.body {
         ComponentBody::Children(blocks) => {
             out.push('\n');
@@ -101,7 +190,43 @@ fn render_component(component: &Component, out: &mut String) {
         }
         _ => {}
     }
-    out.push_str(&format!("</{tag}>\n"));
+}
+
+/// Render comma-separated data as an HTML table (the static fallback for charts
+/// and enhanced tables). The first non-empty row is treated as the header.
+fn render_csv_table(raw: &str, out: &mut String) {
+    let mut rows = raw.lines().filter(|line| !line.trim().is_empty());
+    out.push_str("<table>");
+    if let Some(header) = rows.next() {
+        out.push_str("<thead><tr>");
+        for cell in header.split(',') {
+            out.push_str(&format!("<th>{}</th>", escape_html(cell.trim())));
+        }
+        out.push_str("</tr></thead>");
+    }
+    out.push_str("<tbody>");
+    for row in rows {
+        out.push_str("<tr>");
+        for cell in row.split(',') {
+            out.push_str(&format!("<td>{}</td>", escape_html(cell.trim())));
+        }
+        out.push_str("</tr>");
+    }
+    out.push_str("</tbody></table>");
+}
+
+/// Reduce a string to a safe CSS class suffix: lowercase letters, digits, hyphens.
+fn sanitize_class(value: &str) -> String {
+    let cleaned: String = value
+        .to_ascii_lowercase()
+        .chars()
+        .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-')
+        .collect();
+    if cleaned.is_empty() {
+        "default".to_owned()
+    } else {
+        cleaned
+    }
 }
 
 fn render_attrs(attrs: &Attrs, out: &mut String) {
@@ -257,10 +382,11 @@ mod tests {
     }
 
     #[test]
-    fn renders_fence_component_with_pre_fallback() {
-        let html = render("```chart kind=line\njan,1\n```");
+    fn chart_fallback_is_a_data_table() {
+        let html = render("```chart kind=line\nmonth,value\njan,1\n```");
         assert!(html.contains("<alt-chart data-kind=\"line\">"), "{html}");
-        assert!(html.contains("<pre>jan,1\n</pre>"), "{html}");
+        assert!(html.contains("<th>month</th>"), "header missing: {html}");
+        assert!(html.contains("<td>jan</td>"), "row missing: {html}");
     }
 
     #[test]
@@ -287,5 +413,46 @@ mod tests {
     fn sanitises_raw_html_blocks() {
         let html = render("<div onclick=\"steal()\">hi</div>");
         assert!(!html.to_lowercase().contains("onclick"), "{html}");
+    }
+
+    #[test]
+    fn callout_fallback_is_an_aside() {
+        let html = render(":::callout{type=warning}\nx\n:::");
+        assert!(
+            html.contains("<aside class=\"alt-callout alt-callout-warning\" role=\"note\">"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn accordion_fallback_is_native_details() {
+        let html = render(":::accordion{title=\"More\"}\nbody\n:::");
+        assert!(html.contains("<details><summary>More</summary>"), "{html}");
+        assert!(html.contains("body"), "{html}");
+    }
+
+    #[test]
+    fn tabs_fallback_is_headed_sections() {
+        let html = render("::::tabs\n:::tab{title=\"A\"}\nalpha\n:::\n::::");
+        assert!(
+            html.contains("<section class=\"alt-tab\"><h3>A</h3>"),
+            "{html}"
+        );
+        assert!(html.contains("alpha"), "{html}");
+    }
+
+    #[test]
+    fn math_fallback_is_code() {
+        let html = render("```math\nE=mc^2\n```");
+        assert!(
+            html.contains("<code class=\"alt-math\">E=mc^2</code>"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn embed_fallback_is_a_link() {
+        let html = render(":::embed{src=\"https://example.com/v\"}\n:::");
+        assert!(html.contains("<a href=\"https://example.com/v\""), "{html}");
     }
 }
