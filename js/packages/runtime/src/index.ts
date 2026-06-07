@@ -13,11 +13,15 @@ export {
   type SandboxOptions,
 } from "./sandbox";
 export { sanitizeHtml } from "./sanitize";
+export { AltElement, registerComponents, V1_COMPONENTS } from "./components";
+export { mount, renderInto, type RenderFn } from "./mount";
+
+import { registerComponents } from "./components";
 
 /**
- * Bootstrap the runtime against a root node. Phase 4 wires the WASM core and the
- * component registry; this is intentionally minimal in Phase 0.
+ * Bootstrap the runtime: define the component custom elements so any `alt-<name>`
+ * elements already in the document upgrade in place. Call once on page load.
  */
-export function bootstrap(_root: ParentNode): void {
-  // Phase 4: load WASM, scan for component nodes, enhance.
+export function bootstrap(): void {
+  registerComponents();
 }
