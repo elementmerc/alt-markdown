@@ -1,0 +1,6 @@
+[toolchain]
+# Pinned at v0.1 release; "stable" during early development. Minimum 1.85 (edition 2024)
+# is enforced via rust-version in the workspace package metadata.
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]

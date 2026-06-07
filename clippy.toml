@@ -1,0 +1,4 @@
+# Allow the ergonomic test idioms while keeping the restriction lints strict in
+# non-test code (matches the fleet convention).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true

@@ -1,0 +1,21 @@
+[package]
+name = "altmd-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "alt-markdown command-line tools."
+
+[[bin]]
+name = "altmd"
+path = "src/main.rs"
+
+[dependencies]
+altmd-core.workspace = true
+anyhow.workspace = true
+clap = { workspace = true }
+
+[lints]
+workspace = true

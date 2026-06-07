@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+authors = ["Daniel Iwugo"]
+repository = "https://github.com/elementmerc/alt-markdown"
+
+[workspace.dependencies]
+# internal crates
+altmd-ast = { path = "crates/altmd-ast" }
+altmd-parser = { path = "crates/altmd-parser" }
+altmd-sanitize = { path = "crates/altmd-sanitize" }
+altmd-core = { path = "crates/altmd-core" }
+
+# external
+comrak = "0.39"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+wasm-bindgen = "0.2"
+
+# dev
+insta = { version = "1", features = ["json"] }
+proptest = "1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+todo = "warn"
+unimplemented = "warn"

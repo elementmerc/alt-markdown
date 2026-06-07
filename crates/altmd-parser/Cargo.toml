@@ -1,0 +1,17 @@
+[package]
+name = "altmd-parser"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "comrak-backed parser for alt-markdown, behind the AST trait boundary."
+
+[dependencies]
+altmd-ast.workspace = true
+comrak.workspace = true
+thiserror.workspace = true
+
+[lints]
+workspace = true

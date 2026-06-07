@@ -1,0 +1,19 @@
+[package]
+name = "altmd-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "WebAssembly bindings for the alt-markdown core (the CDN runtime)."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+altmd-core.workspace = true
+wasm-bindgen.workspace = true
+
+[lints]
+workspace = true

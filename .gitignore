@@ -19,10 +19,11 @@ Thumbs.db
 .idea/
 .vscode/
 
-# Common build artefact directories — uncomment per project as needed
-# target/
-# node_modules/
-# dist/
-# build/
-# __pycache__/
-# *.pyc
+# Build artefacts (this repo ships Rust + Node)
+/target/
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+__pycache__/
+*.pyc
