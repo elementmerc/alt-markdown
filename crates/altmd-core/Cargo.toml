@@ -11,6 +11,7 @@ description = "Public facade for the alt-markdown core (parser, AST, render)."
 [dependencies]
 altmd-ast.workspace = true
 altmd-parser.workspace = true
+altmd-sanitize.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]

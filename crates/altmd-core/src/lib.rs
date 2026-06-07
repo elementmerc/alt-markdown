@@ -14,10 +14,12 @@ pub use error::CoreError;
 pub use altmd_ast::{Block, Document, Inline, List, Parser, Serializer, Span};
 pub use altmd_parser::CommonMarkParser;
 
-/// Render alt-markdown `source` to an HTML string.
+/// Render alt-markdown `source` to safe HTML: full CommonMark rendering with raw
+/// HTML passed through, then sanitised to a safe subset (scripts, event handlers,
+/// and dangerous URL schemes removed).
 #[must_use]
 pub fn to_html(source: &str) -> String {
-    altmd_parser::render_html(source)
+    altmd_sanitize::sanitize(&altmd_parser::render_html_unsafe(source))
 }
 
 /// Parse alt-markdown `source` into a [`Document`].

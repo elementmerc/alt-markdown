@@ -6,10 +6,14 @@ rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
 repository.workspace = true
-description = "Raw-HTML allowlist sanitiser for alt-markdown (Phase 3)."
+description = "Raw-HTML allowlist sanitiser for alt-markdown."
 
 [dependencies]
+ammonia.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
 
 [lints]
 workspace = true

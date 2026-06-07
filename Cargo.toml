@@ -19,6 +19,7 @@ altmd-core = { path = "crates/altmd-core" }
 
 # external
 comrak = "0.39"
+ammonia = "4"
 thiserror = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
