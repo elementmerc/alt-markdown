@@ -39,3 +39,16 @@ test("the cybersecurity article renders its chart and a contained diagram", asyn
   // The hostile callout attribute became an inert data attribute.
   await expect(page.locator("alt-callout[data-onclick]")).toHaveCount(1);
 });
+
+test("task-list checkboxes are interactive", async ({ page }) => {
+  await page.goto("/demo/article.html?doc=cybersecurity");
+  await page.waitForSelector("li.task-list-item");
+  // The checklist's fourth item ships unchecked; target it by a stable index so
+  // the locator does not re-resolve once it becomes checked.
+  const box = page.locator("li.task-list-item input[type='checkbox']").nth(3);
+  // The runtime enabled them (the static fallback ships them disabled).
+  await expect(box).toBeEnabled();
+  await expect(box).not.toBeChecked();
+  await box.check();
+  await expect(box).toBeChecked();
+});

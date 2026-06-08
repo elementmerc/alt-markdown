@@ -1,6 +1,6 @@
 // Mounting: inject rendered HTML into the page and upgrade its components.
 
-import { registerComponents } from "./components";
+import { enhanceTaskLists, registerComponents } from "./components";
 
 /**
  * A function that renders alt-markdown source to component-aware HTML. In the
@@ -18,6 +18,7 @@ export type RenderFn = (source: string) => string;
 export function mount(root: Element, safeHtml: string): void {
   registerComponents();
   root.innerHTML = safeHtml;
+  enhanceTaskLists(root);
 }
 
 /**

@@ -131,6 +131,30 @@ function baseFor(name: string): typeof AltElement {
 }
 
 /**
+ * Make task-list checkboxes interactive. The renderer emits them `disabled` so a
+ * no-JS reader sees a faithful read-only checklist; here we enable them and, on
+ * toggle, dispatch a bubbling `altmd:taskchange` event carrying the task's index
+ * and new state. The runtime does not persist the change (it has no source to
+ * write to); an editing host listens for the event and rewrites the document.
+ */
+export function enhanceTaskLists(root: ParentNode): void {
+  const boxes = root.querySelectorAll<HTMLInputElement>(
+    "li.task-list-item > input[type='checkbox']",
+  );
+  boxes.forEach((box, index) => {
+    box.disabled = false;
+    box.addEventListener("change", () => {
+      box.dispatchEvent(
+        new CustomEvent("altmd:taskchange", {
+          bubbles: true,
+          detail: { index, checked: box.checked },
+        }),
+      );
+    });
+  });
+}
+
+/**
  * Define the component custom elements. Idempotent: re-registering is a no-op, so
  * it is safe to call on every mount.
  */

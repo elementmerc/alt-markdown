@@ -28,4 +28,27 @@ describe("mount", () => {
     renderInto(root, "source", () => "<alt-tabs>x</alt-tabs>");
     expect(root.querySelector("alt-tabs")?.hasAttribute("data-altmd-upgraded")).toBe(true);
   });
+
+  it("makes task-list checkboxes interactive and fires an event on toggle", () => {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    mount(
+      root,
+      '<ul><li class="task-list-item"><input type="checkbox" disabled /> a</li></ul>',
+    );
+    const box = root.querySelector<HTMLInputElement>("input[type='checkbox']");
+    expect(box).not.toBeNull();
+    // No longer read-only.
+    expect(box?.disabled).toBe(false);
+
+    let fired: { index: number; checked: boolean } | null = null;
+    root.addEventListener("altmd:taskchange", (e) => {
+      fired = (e as CustomEvent<{ index: number; checked: boolean }>).detail;
+    });
+    if (box) {
+      box.checked = true;
+      box.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    expect(fired).toEqual({ index: 0, checked: true });
+  });
 });

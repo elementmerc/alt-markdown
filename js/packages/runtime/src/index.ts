@@ -13,7 +13,12 @@ export {
   type SandboxOptions,
 } from "./sandbox";
 export { sanitizeHtml } from "./sanitize";
-export { AltElement, registerComponents, V1_COMPONENTS } from "./components";
+export {
+  AltElement,
+  enhanceTaskLists,
+  registerComponents,
+  V1_COMPONENTS,
+} from "./components";
 export { mount, renderInto, type RenderFn } from "./mount";
 
 import { registerComponents } from "./components";
