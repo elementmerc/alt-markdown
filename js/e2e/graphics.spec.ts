@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 // stays in the DOM (visually hidden) as the accessible source of truth.
 test.describe("interactive graphics", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/demo/");
+    await page.goto("/demo/kitchensink.html");
     await page.waitForSelector("alt-chart[data-altmd-upgraded]");
   });
 

@@ -1,0 +1,101 @@
+# The Paradox of Genius
+
+Genius is the thing we most admire and least understand. We celebrate the
+outlier while insisting everyone is equal; we call the same trait *vision* in
+success and *delusion* in failure. The paradox is that the qualities which
+produce extraordinary work are the same ones that make a life hard to live.
+
+:::callout{type=info}
+This article leans on the data and graphics side of the format: two charts, a
+mind map, a power law, and a comparison table built from deliberately awkward
+data. Everything still renders.
+:::
+
+## Output does not arrive on schedule
+
+Creative output across a career is famously lumpy. Here is a stylised profile of
+major works produced per five-year span:
+
+```chart kind=line
+age,major works,minor works
+20,1,4
+25,3,7
+30,5,6
+35,6,3
+40,4,5
+45,2,4
+50,3,2
+```
+
+The second series lets the chart carry two lines at once; with the runtime off,
+the same numbers read as a plain table.
+
+## The tension, mapped
+
+```diagram
+mindmap
+  root((Genius))
+    Gifts
+      Obsessive focus
+      Pattern sight
+      Tolerance for risk
+    Costs
+      Isolation
+      Self-doubt
+      Burnout
+    Paradox
+      Same trait, opposite outcome
+```
+
+## Counting on a power law
+
+The distribution of impact is not a bell curve. A handful of works accumulate
+most of the citations, the rest trail off, following roughly a power law:
+
+```math
+P(x) \propto x^{-\alpha}, \quad 2 < \alpha < 3
+```
+
+That heavy tail is why a single career can contain both a masterpiece and a
+hundred forgotten sketches.
+
+## A comparison, with messy cells
+
+Real datasets are never tidy. The table below contains a pipe character inside a
+cell, a missing value, and a number large enough to need separators:
+
+| Figure | Field | Peak age | Catalogue size |
+|:-------|:------|---------:|---------------:|
+| Mozart | Music \| Opera | 30 | 626 |
+| Euler | Mathematics | 50 |  |
+| Hokusai | Art | 70 | 30,000 |
+
+The escaped pipe stays inside its cell, the empty cell renders as empty, and the
+column alignment survives.
+
+## Two readings of the same life
+
+::::tabs
+:::tab{title=Romantic}
+The genius is a force of nature, touched by something the rest of us lack, and
+the suffering is the price of the gift.
+:::
+:::tab{title=Sober}
+The genius is an ordinary mind plus relentless practice, luck, and the freedom
+to fail in public for years. The suffering is mostly the cost of those years.
+:::
+::::
+
+> Talent hits a target no one else can hit; genius hits a target no one else can
+> see. The paradox is that, from the inside, you can never be sure which one you
+> are until long after it matters.
+
+## The honest conclusion
+
+- [x] Genius is real and unevenly distributed
+- [x] Its gifts and its costs share a single root
+- [ ] We have any reliable way to spot it in advance
+- [ ] We agree on what to do about it
+
+We do not get to resolve the paradox. We only get to notice that the things we
+ask of our most original people are, very often, contradictory.

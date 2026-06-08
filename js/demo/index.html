@@ -3,58 +3,46 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>alt-markdown demo</title>
-
-    <!-- Stylesheets for the lazy-loaded graphics libraries (vendored). -->
-    <link rel="stylesheet" href="../node_modules/uplot/dist/uPlot.min.css" />
-    <link rel="stylesheet" href="../node_modules/katex/dist/katex.min.css" />
-
-    <!--
-      Import map: a native, build-free way to resolve the bare specifiers the
-      runtime lazy-imports (`import("uplot")`) to the vendored module files. In
-      production the same names would map to a CDN or be handled by a bundler.
-    -->
-    <script type="importmap">
-      {
-        "imports": {
-          "uplot": "../node_modules/uplot/dist/uPlot.esm.js",
-          "katex": "../node_modules/katex/dist/katex.mjs",
-          "mermaid": "../node_modules/mermaid/dist/mermaid.esm.min.mjs"
-        }
-      }
-    </script>
-
-    <style>
-      body {
-        font-family: system-ui, sans-serif;
-        max-width: 48rem;
-        margin: 2rem auto;
-        padding: 0 1rem;
-        line-height: 1.6;
-      }
-      .alt-chart-canvas {
-        margin: 1rem 0;
-      }
-      .alt-math-rendered {
-        margin: 1rem 0;
-      }
-      /* Visually hide an element while keeping it available to screen readers
-         and to a no-JS reader (the static fallback). */
-      .alt-visually-hidden {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
-      }
-    </style>
+    <title>alt-markdown — live gallery</title>
+    <link rel="stylesheet" href="./demo.css" />
   </head>
   <body>
-    <main id="doc"></main>
-    <script type="module" src="./app.js"></script>
+    <h1>alt-markdown</h1>
+    <p class="tagline">
+      A strict superset of markdown that renders rich, interactive graphics in
+      the browser with zero build. Every article below is a plain
+      <code>.alt</code> text file. Turn JavaScript off and they still read as
+      ordinary markdown.
+    </p>
+
+    <a class="gallery-card" href="./article.html?doc=cybersecurity">
+      <h2>The Anatomy of a Cross-Site Scripting Attack</h2>
+      <p>
+        A security deep dive that fills itself with hostile input on purpose:
+        script tags, event handlers, and javascript URLs inside every component,
+        all rendered safely. With a live attack-flow diagram and a breach chart.
+      </p>
+    </a>
+
+    <a class="gallery-card" href="./article.html?doc=cs-lewis">
+      <h2>C. S. Lewis on the Reading of Old Books</h2>
+      <p>
+        Long-form prose: nested quotations, footnotes, tabs, an accordion, and a
+        typeset epigraph, pushing the text-heavy side of the format.
+      </p>
+    </a>
+
+    <a class="gallery-card" href="./article.html?doc=paradox-of-genius">
+      <h2>The Paradox of Genius</h2>
+      <p>
+        Charts, a mind-map diagram, comparison tables with awkward data, and a
+        power-law equation, stress-testing the data and graphics side.
+      </p>
+    </a>
+
+    <a class="gallery-card" href="./kitchensink.html">
+      <h2>Kitchen sink</h2>
+      <p>Every component on one page, the minimal reference demo.</p>
+    </a>
   </body>
 </html>

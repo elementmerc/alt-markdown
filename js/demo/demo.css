@@ -1,0 +1,254 @@
+/* Shared styling for the alt-markdown demo gallery. Plain CSS, no build. */
+
+:root {
+  --ink: #1a1a2e;
+  --muted: #5a5a72;
+  --line: #e4e4ef;
+  --accent: #4f46e5;
+  --bg: #fbfbfe;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  color: var(--ink);
+  background: var(--bg);
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 3rem 1.25rem 6rem;
+  line-height: 1.7;
+  font-size: 1.075rem;
+}
+
+h1,
+h2,
+h3 {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 2.4rem;
+  margin: 0 0 0.25rem;
+}
+
+h2 {
+  margin-top: 2.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--line);
+}
+
+a {
+  color: var(--accent);
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.9em;
+  background: #f0f0f8;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+pre {
+  background: #1a1a2e;
+  color: #e8e8f5;
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  overflow-x: auto;
+  font-size: 0.92rem;
+}
+
+pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+blockquote {
+  margin: 1.5rem 0;
+  padding: 0.4rem 1.25rem;
+  border-left: 4px solid var(--accent);
+  color: var(--muted);
+  font-style: italic;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.5rem 0;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.95rem;
+}
+
+th,
+td {
+  border: 1px solid var(--line);
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+th {
+  background: #f3f3fb;
+}
+
+/* Components ------------------------------------------------------------- */
+
+.alt-callout {
+  margin: 1.5rem 0;
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  border-left: 5px solid var(--muted);
+  background: #f3f3fb;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.97rem;
+}
+
+.alt-callout p:first-child {
+  margin-top: 0;
+}
+.alt-callout p:last-child {
+  margin-bottom: 0;
+}
+
+.alt-callout-warning {
+  border-left-color: #d97706;
+  background: #fff7ed;
+}
+.alt-callout-danger {
+  border-left-color: #dc2626;
+  background: #fef2f2;
+}
+.alt-callout-note,
+.alt-callout-info {
+  border-left-color: var(--accent);
+  background: #eef2ff;
+}
+.alt-callout-success {
+  border-left-color: #16a34a;
+  background: #f0fdf4;
+}
+
+.alt-tablist {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 2px solid var(--line);
+  margin-bottom: 0.5rem;
+}
+
+.alt-tablist button {
+  font: inherit;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.95rem;
+  border: 0;
+  background: none;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+}
+
+.alt-tablist button[aria-selected="true"] {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+alt-tab section {
+  padding: 0.25rem 0;
+}
+
+alt-accordion details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  margin: 1rem 0;
+  background: #fff;
+}
+
+alt-accordion summary {
+  cursor: pointer;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+}
+
+.alt-chart-canvas,
+.alt-math-rendered {
+  margin: 1.5rem 0;
+}
+
+.alt-math-rendered {
+  text-align: center;
+  overflow-x: auto;
+}
+
+alt-diagram iframe {
+  display: block;
+  margin: 1.5rem auto;
+  background: #fff;
+}
+
+ul.contains-task-list,
+li.task-list-item {
+  list-style: none;
+}
+
+.alt-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Gallery index ---------------------------------------------------------- */
+
+.gallery-card {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.25rem 1.5rem;
+  margin: 1rem 0;
+  background: #fff;
+  transition: border-color 0.15s, transform 0.15s;
+}
+
+.gallery-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.gallery-card h2 {
+  margin: 0 0 0.25rem;
+  border: 0;
+  padding: 0;
+  font-size: 1.3rem;
+  color: var(--accent);
+}
+
+.gallery-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.97rem;
+}
+
+.tagline {
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+.doc-error {
+  color: #dc2626;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}

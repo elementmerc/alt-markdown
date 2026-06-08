@@ -1,0 +1,84 @@
+# C. S. Lewis on the Reading of Old Books
+
+There is a strange idea abroad that in every subject the ancient books should be
+read only by the professional, and that the amateur should content himself with
+the modern books.[^intro] Lewis thought this exactly backwards.
+
+:::callout{type=note}
+This essay first appeared in 1944 as the introduction to a translation of
+Athanasius. The argument it makes about *books* turns out to be an argument
+about *formats* too: what survives is what stays readable.
+:::
+
+## The argument in his own words
+
+> Naturally, since I myself am a writer, I do not wish the ordinary reader to
+> read no modern books. But if he must read only the new or only the old, I
+> would advise him to read the old.
+>
+> > And I would give him this advice precisely because he is an amateur and
+> > therefore much less protected than the expert against the dangers of an
+> > exclusive contemporary diet.
+
+The quotation above nests one block inside another, two levels deep, and the
+format keeps both rules intact.
+
+## Three works, three doors
+
+Readers arrive at Lewis through very different books. Pick a door:
+
+::::tabs
+:::tab{title=Apologetics}
+*Mere Christianity* began as wartime radio talks. Its method is plain: start
+from something the listener already grants, then walk one careful step at a time.
+:::
+:::tab{title=Fiction}
+*The Chronicles of Narnia* smuggle the same ideas past what he called the
+"watchful dragons" of a too-solemn reverence.
+:::
+:::tab{title=Grief}
+*A Grief Observed*, published under a pseudonym, is the unguarded notebook of a
+man watching his own faith tested by loss.
+:::
+::::
+
+## A line worth typesetting
+
+He believed glory was not vanity but *weight*, a thing with real mass. If we let
+ourselves be playful and write that as an equation, the point is that the term
+never vanishes:
+
+```math
+\lim_{t \to \infty} \text{Glory}(t) \neq 0
+```
+
+## The shape of a life
+
+```diagram
+timeline
+  title A brief life of C. S. Lewis
+  1898 : Born in Belfast
+  1917 : Trenches of the First World War
+  1931 : Returns to Christian faith
+  1942 : The Screwtape Letters
+  1950 : The Lion, the Witch and the Wardrobe
+  1963 : Dies in Oxford
+```
+
+## For the curious
+
+alt-accordion below hides the full closing paragraph until you want it.
+
+:::accordion{title="Read the famous closing lines"}
+He wrote that there are no *ordinary* people, that you have never talked to a
+mere mortal. Nations, cultures, arts, civilisations, these are mortal, and their
+life is to ours as the life of a gnat. But it is immortals whom we joke with,
+work with, marry, snub, and exploit.
+:::
+
+The passage above is full of the punctuation that breaks lesser parsers:
+apostrophes, commas in series, and emphasis pressed right up against words. It
+round-trips cleanly.
+
+[^intro]: From *On the Reading of Old Books*, C. S. Lewis, 1944. The essay is now
+in the public domain in several jurisdictions and is widely anthologised.
