@@ -24,6 +24,15 @@ pub fn to_html(source: &str) -> String {
     altmd_sanitize::sanitize(&altmd_parser::render_html_unsafe(source))
 }
 
+/// Render `source` as pure CommonMark HTML with raw HTML passed through. This is
+/// the spec-conformance path: no GFM extensions, no sanitiser. It is **not** safe
+/// for untrusted input (use [`to_html`] for that); its purpose is to measure
+/// CommonMark conformance the same way the reference implementations do.
+#[must_use]
+pub fn to_commonmark_html(source: &str) -> String {
+    altmd_parser::render_html_unsafe(source)
+}
+
 /// Parse alt-markdown `source` into a [`Document`].
 ///
 /// # Errors

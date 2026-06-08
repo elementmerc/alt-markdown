@@ -23,3 +23,14 @@ pub fn render_html(source: &str) -> String {
 pub fn render(source: &str) -> Result<String, wasm_bindgen::JsError> {
     altmd_core::render(source).map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))
 }
+
+/// Normalise alt-markdown `source`: parse it and serialise it back to canonical
+/// source text. This is the round-trip an editing host (Alexandria) uses to
+/// read, edit, and write a document. Exposed to JavaScript as `normalise`.
+///
+/// # Errors
+/// Returns a JavaScript error if the source cannot be parsed.
+#[wasm_bindgen]
+pub fn normalise(source: &str) -> Result<String, wasm_bindgen::JsError> {
+    altmd_core::normalise(source).map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))
+}
