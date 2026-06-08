@@ -10,5 +10,11 @@ export default defineConfig({
       fileName: "index",
       formats: ["es"],
     },
+    rollupOptions: {
+      // The heavy graphics libraries are lazy-loaded and provided by the host
+      // (an import map in the demo, a CDN or bundler in production), so they
+      // stay external dynamic imports rather than being bundled into the core.
+      external: ["uplot", "katex", "mermaid"],
+    },
   },
 });

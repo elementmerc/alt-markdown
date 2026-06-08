@@ -4,6 +4,54 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>alt-markdown demo</title>
+
+    <!-- Stylesheets for the lazy-loaded graphics libraries (vendored). -->
+    <link rel="stylesheet" href="../node_modules/uplot/dist/uPlot.min.css" />
+    <link rel="stylesheet" href="../node_modules/katex/dist/katex.min.css" />
+
+    <!--
+      Import map: a native, build-free way to resolve the bare specifiers the
+      runtime lazy-imports (`import("uplot")`) to the vendored module files. In
+      production the same names would map to a CDN or be handled by a bundler.
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "uplot": "../node_modules/uplot/dist/uPlot.esm.js",
+          "katex": "../node_modules/katex/dist/katex.mjs",
+          "mermaid": "../node_modules/mermaid/dist/mermaid.esm.min.mjs"
+        }
+      }
+    </script>
+
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 48rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        line-height: 1.6;
+      }
+      .alt-chart-canvas {
+        margin: 1rem 0;
+      }
+      .alt-math-rendered {
+        margin: 1rem 0;
+      }
+      /* Visually hide an element while keeping it available to screen readers
+         and to a no-JS reader (the static fallback). */
+      .alt-visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
   </head>
   <body>
     <main id="doc"></main>

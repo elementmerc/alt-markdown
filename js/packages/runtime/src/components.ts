@@ -6,6 +6,7 @@
 // host DOM. The remaining components are enhanced markers in this phase; chart,
 // math, and rich diagrams gain their libraries (lazy-loaded) as a follow-up.
 
+import { renderChart, renderDiagram, renderMath } from "./graphics";
 import { createSandboxedFrame } from "./sandbox";
 
 /** The component names that get an `alt-<name>` custom element. */
@@ -76,7 +77,29 @@ class TabsElement extends AltElement {
   }
 }
 
-/** Diagram and escape hatch: render the fallback content inside a sandbox. */
+/** Chart: render an interactive uPlot chart from the fallback data table. */
+class ChartElement extends AltElement {
+  protected override enhance(): void {
+    // Lazy-loaded; a failure leaves the accessible fallback table in place.
+    void renderChart(this).catch(() => {});
+  }
+}
+
+/** Maths: typeset the fallback expression with KaTeX. */
+class MathElement extends AltElement {
+  protected override enhance(): void {
+    void renderMath(this).catch(() => {});
+  }
+}
+
+/** Diagram: render Mermaid in the host, display its SVG in a locked sandbox. */
+class DiagramElement extends AltElement {
+  protected override enhance(): void {
+    void renderDiagram(this).catch(() => {});
+  }
+}
+
+/** Escape hatch: render arbitrary fallback content inside a sandbox. */
 class SandboxedElement extends AltElement {
   protected override enhance(): void {
     const frame = createSandboxedFrame({
@@ -92,7 +115,16 @@ function baseFor(name: string): typeof AltElement {
   if (name === "tabs") {
     return TabsElement;
   }
-  if (name === "diagram" || name === "sandbox") {
+  if (name === "chart") {
+    return ChartElement;
+  }
+  if (name === "math") {
+    return MathElement;
+  }
+  if (name === "diagram") {
+    return DiagramElement;
+  }
+  if (name === "sandbox") {
     return SandboxedElement;
   }
   return AltElement;

@@ -17,6 +17,16 @@
   "dependencies": {
     "dompurify": "^3.2.4"
   },
+  "peerDependencies": {
+    "katex": "^0.16",
+    "mermaid": "^11",
+    "uplot": "^1.6"
+  },
+  "peerDependenciesMeta": {
+    "katex": { "optional": true },
+    "mermaid": { "optional": true },
+    "uplot": { "optional": true }
+  },
   "scripts": {
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json"

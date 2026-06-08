@@ -15,11 +15,23 @@ Heads up: this is a callout. Without the runtime it degrades to a plain aside.
 
 ## A chart
 
+The runtime lazy-loads uPlot and draws an interactive chart; with no JavaScript
+the same data reads as a plain table.
+
 \`\`\`chart kind=bar
-month,sales
-jan,10
-feb,18
-mar,25
+month,sales,returns
+jan,10,2
+feb,18,3
+mar,25,4
+apr,22,5
+\`\`\`
+
+## Some maths
+
+Inline prose, then a typeset expression rendered by KaTeX:
+
+\`\`\`math
+\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}
 \`\`\`
 
 ## Tabs
