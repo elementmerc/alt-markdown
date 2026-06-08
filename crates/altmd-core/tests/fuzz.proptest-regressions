@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 896e783a41d3b78db645f91308b1987af47fb43f5a12a4daf543a404c09ddf5a # shrinks to parts = ["```chart kind=bar", "[link](javascript:alert(1))"]
