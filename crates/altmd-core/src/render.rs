@@ -52,8 +52,18 @@ fn render_block(block: &Block, out: &mut String) {
                 out.push_str(&format!("<{tag}>\n"));
             }
             for item in &list.items {
-                out.push_str("<li>");
-                render_blocks(item, out);
+                match item.task {
+                    Some(true) => {
+                        out.push_str("<li class=\"task-list-item\">");
+                        out.push_str("<input type=\"checkbox\" checked disabled /> ");
+                    }
+                    Some(false) => {
+                        out.push_str("<li class=\"task-list-item\">");
+                        out.push_str("<input type=\"checkbox\" disabled /> ");
+                    }
+                    None => out.push_str("<li>"),
+                }
+                render_blocks(&item.blocks, out);
                 out.push_str("</li>\n");
             }
             out.push_str(&format!("</{tag}>\n"));
@@ -72,10 +82,50 @@ fn render_block(block: &Block, out: &mut String) {
             out.push_str("</code></pre>\n");
         }
         Block::ThematicBreak => out.push_str("<hr />\n"),
+        Block::Table(table) => render_table(table, out),
+        Block::FootnoteDefinition { name, blocks } => {
+            out.push_str(&format!(
+                "<section class=\"footnote\" id=\"fn-{}\">\n",
+                escape_attr(name)
+            ));
+            render_blocks(blocks, out);
+            out.push_str("</section>\n");
+        }
         Block::HtmlBlock(html) => out.push_str(&altmd_sanitize::sanitize(html)),
         Block::Component(component) => render_component(component, out),
         _ => {}
     }
+}
+
+fn render_table(table: &altmd_ast::Table, out: &mut String) {
+    use altmd_ast::Alignment;
+    let style = |col: usize| match table.alignments.get(col) {
+        Some(Alignment::Left) => " style=\"text-align:left\"",
+        Some(Alignment::Center) => " style=\"text-align:center\"",
+        Some(Alignment::Right) => " style=\"text-align:right\"",
+        _ => "",
+    };
+    out.push_str("<table>\n<thead>\n<tr>\n");
+    for (col, cell) in table.header.iter().enumerate() {
+        out.push_str(&format!("<th{}>", style(col)));
+        render_inlines(cell, out);
+        out.push_str("</th>\n");
+    }
+    out.push_str("</tr>\n</thead>\n");
+    if !table.rows.is_empty() {
+        out.push_str("<tbody>\n");
+        for row in &table.rows {
+            out.push_str("<tr>\n");
+            for (col, cell) in row.iter().enumerate() {
+                out.push_str(&format!("<td{}>", style(col)));
+                render_inlines(cell, out);
+                out.push_str("</td>\n");
+            }
+            out.push_str("</tr>\n");
+        }
+        out.push_str("</tbody>\n");
+    }
+    out.push_str("</table>\n");
 }
 
 fn render_component(component: &Component, out: &mut String) {
@@ -265,6 +315,18 @@ fn render_inline(inline: &Inline, out: &mut String) {
             render_inlines(content, out);
             out.push_str("</strong>");
         }
+        Inline::Strikethrough(content) => {
+            out.push_str("<del>");
+            render_inlines(content, out);
+            out.push_str("</del>");
+        }
+        Inline::FootnoteReference { name } => {
+            out.push_str(&format!(
+                "<sup class=\"footnote-ref\"><a href=\"#fn-{}\">{}</a></sup>",
+                escape_attr(name),
+                escape_html(name)
+            ));
+        }
         Inline::Code(text) => {
             out.push_str("<code>");
             out.push_str(&escape_html(text));
@@ -410,6 +472,73 @@ mod tests {
     }
 
     #[test]
+    fn renders_gfm_table_with_alignment() {
+        let html = render("| a | b |\n|:--|--:|\n| 1 | 2 |");
+        assert!(html.contains("<table>"), "{html}");
+        assert!(
+            html.contains("<th style=\"text-align:left\">a</th>"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<th style=\"text-align:right\">b</th>"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<td style=\"text-align:left\">1</td>"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn renders_gfm_task_list_checkboxes() {
+        let html = render("- [x] done\n- [ ] todo");
+        assert!(
+            html.contains("<input type=\"checkbox\" checked disabled />"),
+            "checked box missing: {html}"
+        );
+        assert!(
+            html.contains("<input type=\"checkbox\" disabled />"),
+            "unchecked box missing: {html}"
+        );
+    }
+
+    #[test]
+    fn renders_gfm_strikethrough_and_autolink() {
+        let html = render("~~gone~~ and https://example.com");
+        assert!(html.contains("<del>gone</del>"), "{html}");
+        assert!(
+            html.contains("<a href=\"https://example.com\">https://example.com</a>"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn renders_gfm_footnotes() {
+        let html = render("text[^a]\n\n[^a]: note");
+        assert!(
+            html.contains("<sup class=\"footnote-ref\"><a href=\"#fn-a\">a</a></sup>"),
+            "ref missing: {html}"
+        );
+        assert!(
+            html.contains("<section class=\"footnote\" id=\"fn-a\">"),
+            "definition missing: {html}"
+        );
+    }
+
+    #[test]
+    fn table_cells_neutralise_hostile_content() {
+        // Raw HTML in a cell is sanitised (the script tag is stripped, not
+        // executed); a literal `<` typed as text is escaped. Either way no live
+        // script tag can reach the output.
+        let html = render("| h | k |\n|---|---|\n| <script>alert(1)</script> | 1 < 2 |\n");
+        assert!(
+            !html.contains("<script"),
+            "script leaked from table cell: {html}"
+        );
+        assert!(html.contains("&lt; 2"), "literal lt not escaped: {html}");
+    }
+
+    #[test]
     fn neutralises_hostile_content_inside_components() {
         // Hostile payloads inside component fences and bodies must not produce a
         // live tag or event handler: a raw component body is escaped, a markdown
@@ -422,7 +551,10 @@ mod tests {
         ];
         for case in cases {
             let html = render(case);
-            assert!(!html.contains("<script"), "script leaked from: {case}\n{html}");
+            assert!(
+                !html.contains("<script"),
+                "script leaked from: {case}\n{html}"
+            );
             let handler = regex_lite_event_handler(&html);
             assert!(!handler, "event handler leaked from: {case}\n{html}");
         }
@@ -443,7 +575,11 @@ mod tests {
                     if rest.starts_with("on")
                         && rest[2..]
                             .find('=')
-                            .map(|eq| lower[i + 2..i + 2 + eq].chars().all(|c| c.is_ascii_alphabetic()))
+                            .map(|eq| {
+                                lower[i + 2..i + 2 + eq]
+                                    .chars()
+                                    .all(|c| c.is_ascii_alphabetic())
+                            })
                             .unwrap_or(false)
                     {
                         return true;

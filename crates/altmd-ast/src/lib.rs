@@ -55,21 +55,72 @@ pub enum Block {
     },
     /// A thematic break (horizontal rule).
     ThematicBreak,
+    /// A GFM pipe table.
+    Table(Table),
+    /// A GFM footnote definition, referenced by [`Inline::FootnoteReference`].
+    FootnoteDefinition {
+        /// The footnote label (without the `^`).
+        name: String,
+        /// The block content of the footnote.
+        blocks: Vec<Block>,
+    },
     /// A raw HTML block. Sanitised before rendering (Phase 3).
     HtmlBlock(String),
     /// A standard-library component (hybrid-grammar extension).
     Component(Component),
 }
 
-/// An ordered or unordered list. Each item is a sequence of blocks.
+/// An ordered or unordered list.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct List {
     /// Whether the list is ordered (numbered) rather than bulleted.
     pub ordered: bool,
     /// The starting number for an ordered list (1 for unordered).
     pub start: u32,
-    /// The list items, each a sequence of block-level nodes.
-    pub items: Vec<Vec<Block>>,
+    /// The list items.
+    pub items: Vec<ListItem>,
+}
+
+/// A single list item. Carries optional GFM task-list state so the renderer can
+/// emit a checkbox and a future editor can toggle it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ListItem {
+    /// `None` for an ordinary item; `Some(checked)` for a GFM task-list item.
+    pub task: Option<bool>,
+    /// The block-level content of the item.
+    pub blocks: Vec<Block>,
+}
+
+impl ListItem {
+    /// An ordinary (non-task) list item wrapping the given blocks.
+    #[must_use]
+    pub fn new(blocks: Vec<Block>) -> Self {
+        Self { task: None, blocks }
+    }
+}
+
+/// A GFM pipe table: a header row, body rows, and a per-column alignment.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Table {
+    /// Per-column alignment, in column order.
+    pub alignments: Vec<Alignment>,
+    /// The header row: one cell of inline content per column.
+    pub header: Vec<Vec<Inline>>,
+    /// The body rows: each a list of cells of inline content.
+    pub rows: Vec<Vec<Vec<Inline>>>,
+}
+
+/// Column alignment for a [`Table`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Alignment {
+    /// No explicit alignment.
+    None,
+    /// Left-aligned.
+    Left,
+    /// Centre-aligned.
+    Center,
+    /// Right-aligned.
+    Right,
 }
 
 /// Inline-level content. Component nodes arrive in Phase 2.
@@ -84,6 +135,13 @@ pub enum Inline {
     Strong(Vec<Inline>),
     /// Inline code.
     Code(String),
+    /// GFM strikethrough (`~~text~~`).
+    Strikethrough(Vec<Inline>),
+    /// A GFM footnote reference, resolved against a [`Block::FootnoteDefinition`].
+    FootnoteReference {
+        /// The footnote label (without the `^`).
+        name: String,
+    },
     /// A hyperlink.
     Link {
         /// The destination URL.

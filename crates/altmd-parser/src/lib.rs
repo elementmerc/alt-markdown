@@ -10,8 +10,26 @@ pub mod error;
 
 pub use error::ParseError;
 
-use altmd_ast::{AstError, Attrs, Block, Component, ComponentBody, Document, Inline, List, Parser};
-use comrak::nodes::{AstNode, ListType, NodeValue};
+use altmd_ast::{
+    Alignment, AstError, Attrs, Block, Component, ComponentBody, Document, Inline, List, ListItem,
+    Parser, Table,
+};
+use comrak::nodes::{AstNode, ListType, NodeValue, TableAlignment};
+
+/// comrak options with the GFM extensions alt-markdown adopts (tables, task
+/// lists, strikethrough, autolinks, footnotes) enabled. This is the production
+/// parse configuration; the CommonMark conformance path stays pure (see
+/// [`render_html_unsafe`]) so bare-URL autolinking does not perturb the spec
+/// fixtures.
+fn gfm_options() -> comrak::Options<'static> {
+    let mut options = comrak::Options::default();
+    options.extension.table = true;
+    options.extension.tasklist = true;
+    options.extension.strikethrough = true;
+    options.extension.autolink = true;
+    options.extension.footnotes = true;
+    options
+}
 
 /// Maximum nesting depth the parser accepts, for directives and for the block and
 /// inline tree alike. Real documents nest a handful of levels deep; tens of
@@ -67,7 +85,7 @@ impl Parser for CommonMarkParser {
 /// Parse a run of plain CommonMark (between directive fences) into block nodes.
 fn parse_commonmark_blocks(source: &str) -> Result<Vec<Block>, AstError> {
     let arena = comrak::Arena::new();
-    let options = comrak::Options::default();
+    let options = gfm_options();
     let root = comrak::parse_document(&arena, source, &options);
     root.children().map(|n| map_block(n, 0)).collect()
 }
@@ -111,7 +129,7 @@ fn map_block<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Block, AstError>
             };
             let items = node
                 .children()
-                .map(|n| map_blocks(n, depth + 1))
+                .map(|n| map_list_item(n, depth + 1))
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Block::List(List {
                 ordered,
@@ -119,6 +137,11 @@ fn map_block<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Block, AstError>
                 items,
             }))
         }
+        NodeValue::Table(table) => Ok(Block::Table(map_table(node, table, depth + 1)?)),
+        NodeValue::FootnoteDefinition(def) => Ok(Block::FootnoteDefinition {
+            name: def.name.clone(),
+            blocks: map_blocks(node, depth + 1)?,
+        }),
         NodeValue::CodeBlock(cb) => {
             let name = cb.info.split_whitespace().next().unwrap_or_default();
             if let Some(spec) = registry::lookup(name) {
@@ -151,6 +174,10 @@ fn map_inline<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Inline, AstErro
         NodeValue::Text(text) => Ok(Inline::Text(text.clone())),
         NodeValue::Emph => Ok(Inline::Emphasis(map_inlines(node, depth + 1)?)),
         NodeValue::Strong => Ok(Inline::Strong(map_inlines(node, depth + 1)?)),
+        NodeValue::Strikethrough => Ok(Inline::Strikethrough(map_inlines(node, depth + 1)?)),
+        NodeValue::FootnoteReference(fref) => Ok(Inline::FootnoteReference {
+            name: fref.name.clone(),
+        }),
         NodeValue::Code(code) => Ok(Inline::Code(code.literal.clone())),
         NodeValue::Link(link) => Ok(Inline::Link {
             url: link.url.clone(),
@@ -168,6 +195,64 @@ fn map_inline<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Inline, AstErro
         other => Err(AstError::Malformed(format!(
             "unsupported inline node: {other:?}"
         ))),
+    }
+}
+
+/// Map one comrak list-item node, capturing GFM task-list checkbox state. A
+/// task item is a `TaskItem` node (it replaces the plain `Item`); its block
+/// children are mapped the same way either way.
+fn map_list_item<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<ListItem, AstError> {
+    check_depth(depth)?;
+    let task = match node.data.borrow().value {
+        NodeValue::TaskItem(symbol) => Some(symbol.is_some()),
+        _ => None,
+    };
+    Ok(ListItem {
+        task,
+        blocks: map_blocks(node, depth + 1)?,
+    })
+}
+
+/// Map a comrak table node into a [`Table`]. Children are `TableRow` nodes (the
+/// header row carries `header == true`); each cell's children are inlines.
+fn map_table<'a>(
+    node: &'a AstNode<'a>,
+    table: &comrak::nodes::NodeTable,
+    depth: usize,
+) -> Result<Table, AstError> {
+    let alignments = table
+        .alignments
+        .iter()
+        .copied()
+        .map(map_alignment)
+        .collect();
+    let mut header = Vec::new();
+    let mut rows = Vec::new();
+    for row in node.children() {
+        let is_header = matches!(row.data.borrow().value, NodeValue::TableRow(true));
+        let cells = row
+            .children()
+            .map(|cell| map_inlines(cell, depth + 1))
+            .collect::<Result<Vec<_>, _>>()?;
+        if is_header {
+            header = cells;
+        } else {
+            rows.push(cells);
+        }
+    }
+    Ok(Table {
+        alignments,
+        header,
+        rows,
+    })
+}
+
+fn map_alignment(alignment: TableAlignment) -> Alignment {
+    match alignment {
+        TableAlignment::None => Alignment::None,
+        TableAlignment::Left => Alignment::Left,
+        TableAlignment::Center => Alignment::Center,
+        TableAlignment::Right => Alignment::Right,
     }
 }
 
@@ -541,8 +626,12 @@ mod tests {
                 ordered: false,
                 start: 1,
                 items: vec![
-                    vec![Block::Paragraph(vec![Inline::Text("a".into())])],
-                    vec![Block::Paragraph(vec![Inline::Text("b".into())])],
+                    altmd_ast::ListItem::new(vec![Block::Paragraph(vec![Inline::Text(
+                        "a".into()
+                    )])]),
+                    altmd_ast::ListItem::new(vec![Block::Paragraph(vec![Inline::Text(
+                        "b".into()
+                    )])]),
                 ],
             })]
         );
