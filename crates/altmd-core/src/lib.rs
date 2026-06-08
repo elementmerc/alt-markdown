@@ -14,7 +14,7 @@ pub use render::render_document;
 
 // One facade: downstream crates depend on these re-exports, not the sub-crates.
 pub use altmd_ast::{Block, Document, Inline, List, Parser, Serializer, Span};
-pub use altmd_parser::CommonMarkParser;
+pub use altmd_parser::{CommonMarkParser, MarkdownSerializer};
 
 /// Render alt-markdown `source` to safe HTML: full CommonMark rendering with raw
 /// HTML passed through, then sanitised to a safe subset (scripts, event handlers,
@@ -44,6 +44,24 @@ pub fn parse(source: &str) -> Result<Document, CoreError> {
 /// Returns [`CoreError`] if the source contains an invalid directive.
 pub fn render(source: &str) -> Result<String, CoreError> {
     Ok(render_document(&parse(source)?))
+}
+
+/// Serialise a [`Document`] back to alt-markdown source text. Normalising: the
+/// output re-parses to an equal AST but is not guaranteed byte-identical to the
+/// original source. This is the second half of the edit round-trip.
+#[must_use]
+pub fn to_source(document: &Document) -> String {
+    use altmd_ast::Serializer as _;
+    MarkdownSerializer::new().to_source(document)
+}
+
+/// Normalise alt-markdown `source`: parse it and serialise it back. Useful as a
+/// formatter and as the round-trip used by editing consumers.
+///
+/// # Errors
+/// Returns [`CoreError`] if the source cannot be parsed.
+pub fn normalise(source: &str) -> Result<String, CoreError> {
+    Ok(to_source(&parse(source)?))
 }
 
 #[cfg(test)]

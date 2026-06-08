@@ -7,8 +7,10 @@
 //! layer build on. The hybrid-grammar extensions are layered on this in Phase 2.
 
 pub mod error;
+pub mod serializer;
 
 pub use error::ParseError;
+pub use serializer::MarkdownSerializer;
 
 use altmd_ast::{
     Alignment, AstError, Attrs, Block, Component, ComponentBody, Document, Inline, List, ListItem,

@@ -13,5 +13,8 @@ altmd-ast.workspace = true
 comrak.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+proptest.workspace = true
+
 [lints]
 workspace = true
