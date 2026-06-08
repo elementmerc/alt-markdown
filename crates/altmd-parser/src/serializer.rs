@@ -81,7 +81,9 @@ fn serialize_list(list: &List) -> String {
             &indent,
         ));
     }
-    lines.join("\n")
+    // A loose list keeps a blank line between items so it re-parses as loose;
+    // a tight list packs them together.
+    lines.join(if list.tight { "\n" } else { "\n\n" })
 }
 
 fn serialize_code_block(info: &str, literal: &str) -> String {

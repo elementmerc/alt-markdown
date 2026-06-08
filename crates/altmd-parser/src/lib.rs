@@ -146,6 +146,7 @@ fn map_block<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Block, AstError>
             Ok(Block::List(List {
                 ordered,
                 start,
+                tight: list.tight,
                 items,
             }))
         }
@@ -641,6 +642,7 @@ mod tests {
             vec![Block::List(List {
                 ordered: false,
                 start: 1,
+                tight: true,
                 items: vec![
                     altmd_ast::ListItem::new(vec![Block::Paragraph(vec![Inline::Text(
                         "a".into()

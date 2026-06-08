@@ -77,6 +77,10 @@ pub struct List {
     pub ordered: bool,
     /// The starting number for an ordered list (1 for unordered).
     pub start: u32,
+    /// Whether the list is tight: a tight list renders its items' paragraphs
+    /// without enclosing `<p>` tags, the way CommonMark specifies. A loose list
+    /// (items separated by blank lines) keeps the paragraphs.
+    pub tight: bool,
     /// The list items.
     pub items: Vec<ListItem>,
 }

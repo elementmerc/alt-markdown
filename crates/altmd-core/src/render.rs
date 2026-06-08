@@ -26,6 +26,19 @@ fn render_blocks(blocks: &[Block], out: &mut String) {
     }
 }
 
+/// Render the blocks of a list item. In a tight list, a direct paragraph child
+/// is emitted as bare inline content (no `<p>` wrapper), per CommonMark, so a
+/// task-list checkbox sits on the same line as its text; other blocks (and all
+/// blocks in a loose list) render normally.
+fn render_item_blocks(blocks: &[Block], tight: bool, out: &mut String) {
+    for block in blocks {
+        match block {
+            Block::Paragraph(content) if tight => render_inlines(content, out),
+            _ => render_block(block, out),
+        }
+    }
+}
+
 fn render_block(block: &Block, out: &mut String) {
     match block {
         Block::Heading { level, content } => {
@@ -63,7 +76,7 @@ fn render_block(block: &Block, out: &mut String) {
                     }
                     None => out.push_str("<li>"),
                 }
-                render_blocks(&item.blocks, out);
+                render_item_blocks(&item.blocks, list.tight, out);
                 out.push_str("</li>\n");
             }
             out.push_str(&format!("</{tag}>\n"));
@@ -493,13 +506,27 @@ mod tests {
     fn renders_gfm_task_list_checkboxes() {
         let html = render("- [x] done\n- [ ] todo");
         assert!(
-            html.contains("<input type=\"checkbox\" checked disabled />"),
-            "checked box missing: {html}"
+            html.contains("<input type=\"checkbox\" checked disabled /> done</li>"),
+            "checked box not inline with text: {html}"
         );
         assert!(
-            html.contains("<input type=\"checkbox\" disabled />"),
-            "unchecked box missing: {html}"
+            html.contains("<input type=\"checkbox\" disabled /> todo</li>"),
+            "unchecked box not inline with text: {html}"
         );
+    }
+
+    #[test]
+    fn tight_lists_drop_the_paragraph_wrapper() {
+        // A tight list item must not wrap its text in <p>, so a checkbox or
+        // bullet sits on the same line as the text.
+        let html = render("- one\n- two");
+        assert!(html.contains("<li>one</li>"), "tight item wrapped in <p>: {html}");
+    }
+
+    #[test]
+    fn loose_lists_keep_the_paragraph_wrapper() {
+        let html = render("- one\n\n- two");
+        assert!(html.contains("<li><p>one</p>"), "loose item lost its <p>: {html}");
     }
 
     #[test]
