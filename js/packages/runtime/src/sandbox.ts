@@ -55,7 +55,6 @@ export function createSandboxedFrame(options: SandboxOptions): HTMLIFrameElement
   // allow-scripts only when needed; allow-same-origin is never granted.
   frame.setAttribute("sandbox", options.allowScripts ? "allow-scripts" : "");
   frame.setAttribute("referrerpolicy", "no-referrer");
-  frame.setAttribute("loading", "lazy");
   if (options.title !== undefined) {
     frame.setAttribute("title", options.title);
   }
