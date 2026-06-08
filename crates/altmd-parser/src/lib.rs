@@ -36,10 +36,17 @@ fn gfm_options() -> comrak::Options<'static> {
 /// Maximum nesting depth the parser accepts, for directives and for the block and
 /// inline tree alike. Real documents nest a handful of levels deep; tens of
 /// thousands of levels is pathological input that would otherwise overflow the
-/// stack during the recursive AST walk and abort the process. We reject anything
-/// deeper with a defined error instead of crashing, per the engineering baseline
-/// (section 2.1: hard, documented resource caps on every parser). The limit sits
-/// far above any plausible real document and far below the overflow threshold.
+/// stack during the recursive AST walk and abort the process (engineering
+/// baseline section 2.1: hard, documented resource caps on every parser). The
+/// limit sits far above any plausible real document and far below the overflow
+/// threshold.
+///
+/// At the cap, the two recursion sites degrade differently. The block and inline
+/// tree (blockquotes, lists, emphasis) **truncates**: it substitutes a visible
+/// [`DEEP_NESTING_MARKER`] and stops recursing, so one over-deep section does not
+/// blank an otherwise readable document. Directive nesting, which is explicit
+/// `:::` syntax, is **rejected** in [`split_directives`] with a defined error,
+/// which also bounds the memory the segment tree can consume.
 pub const MAX_NESTING_DEPTH: usize = 256;
 
 /// Render CommonMark `source` to HTML using comrak with safe defaults: raw HTML
@@ -100,20 +107,23 @@ fn map_inlines<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Vec<Inline>, A
     node.children().map(|n| map_inline(n, depth)).collect()
 }
 
-/// The shared depth guard: comrak parses iteratively, but our recursive walk of
-/// its tree would overflow the stack on pathologically nested input, so we bound
-/// it. See [`MAX_NESTING_DEPTH`].
-fn check_depth(depth: usize) -> Result<(), AstError> {
-    if depth > MAX_NESTING_DEPTH {
-        return Err(AstError::Malformed(format!(
-            "nesting exceeds the maximum depth of {MAX_NESTING_DEPTH}"
-        )));
-    }
-    Ok(())
+/// The visible marker substituted for content nested past [`MAX_NESTING_DEPTH`].
+/// comrak parses iteratively, but our recursive walk of its tree would overflow
+/// the stack on pathologically nested input. Rather than fail the whole document
+/// (which would blank an otherwise readable page over one bad section), we stop
+/// recursing at the cap and leave this marker in place, so the rest of the
+/// document still renders and the truncation is visible, not silent.
+const DEEP_NESTING_MARKER: &str =
+    "[\u{2026} content nested too deeply to render was omitted \u{2026}]";
+
+fn deep_marker_block() -> Block {
+    Block::Paragraph(vec![Inline::Text(DEEP_NESTING_MARKER.to_owned())])
 }
 
 fn map_block<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Block, AstError> {
-    check_depth(depth)?;
+    if depth > MAX_NESTING_DEPTH {
+        return Ok(deep_marker_block());
+    }
     let data = node.data.borrow();
     match &data.value {
         NodeValue::Heading(h) => Ok(Block::Heading {
@@ -170,7 +180,9 @@ fn map_block<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Block, AstError>
 }
 
 fn map_inline<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Inline, AstError> {
-    check_depth(depth)?;
+    if depth > MAX_NESTING_DEPTH {
+        return Ok(Inline::Text(DEEP_NESTING_MARKER.to_owned()));
+    }
     let data = node.data.borrow();
     match &data.value {
         NodeValue::Text(text) => Ok(Inline::Text(text.clone())),
@@ -204,7 +216,9 @@ fn map_inline<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Inline, AstErro
 /// task item is a `TaskItem` node (it replaces the plain `Item`); its block
 /// children are mapped the same way either way.
 fn map_list_item<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<ListItem, AstError> {
-    check_depth(depth)?;
+    if depth > MAX_NESTING_DEPTH {
+        return Ok(ListItem::new(vec![deep_marker_block()]));
+    }
     let task = match node.data.borrow().value {
         NodeValue::TaskItem(symbol) => Some(symbol.is_some()),
         _ => None,
@@ -777,17 +791,37 @@ mod tests {
     }
 
     #[test]
-    fn deeply_nested_blockquotes_error_not_crash() {
+    fn deeply_nested_blockquotes_truncate_not_crash() {
+        // Block-level nesting (comrak tree) truncates with a visible marker
+        // rather than failing the parse: the document still renders.
         let src = "> ".repeat(super::MAX_NESTING_DEPTH + 50) + "x\n";
-        assert!(CommonMarkParser::new().parse(&src).is_err());
+        let doc = CommonMarkParser::new().parse(&src).expect("must not error");
+        assert!(!doc.blocks.is_empty());
     }
 
     #[test]
-    fn deeply_nested_emphasis_errors_not_crash() {
+    fn deeply_nested_emphasis_truncates_not_crash() {
         let n = super::MAX_NESTING_DEPTH + 50;
         let src = "*".repeat(n) + "x" + &"*".repeat(n);
-        // comrak may or may not nest this deeply; if it does, we must not crash.
-        let _ = CommonMarkParser::new().parse(&src);
+        // Must not crash; if comrak nests this deeply we truncate, never error.
+        let doc = CommonMarkParser::new().parse(&src).expect("must not error");
+        assert!(!doc.blocks.is_empty());
+    }
+
+    #[test]
+    fn deep_nesting_truncates_but_siblings_still_render() {
+        // A deeply nested blockquote must not blank the rest of the document:
+        // the heading after it still parses.
+        let src = "> ".repeat(super::MAX_NESTING_DEPTH + 50) + "x\n\n# After\n";
+        let doc = CommonMarkParser::new().parse(&src).expect("must not error");
+        assert!(
+            doc.blocks.iter().any(|b| matches!(
+                b,
+                Block::Heading { level: 1, content } if content == &[Inline::Text("After".into())]
+            )),
+            "heading after the deep section was lost: {:?}",
+            doc.blocks
+        );
     }
 
     #[test]
