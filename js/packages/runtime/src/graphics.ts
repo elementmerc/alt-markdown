@@ -67,8 +67,17 @@ export async function renderChart(host: HTMLElement): Promise<UPlot | null> {
     ticks: { stroke: grid, width: 1 },
   };
 
+  // The chart draws into a block-level container. The custom-element host is
+  // inline by default, so its own clientWidth is 0; the container is what has a
+  // real width to fit, measured before uPlot fills it.
+  const fallbackTable = host.querySelector("table");
+  const canvas = document.createElement("div");
+  canvas.className = "alt-chart-canvas";
+  host.prepend(canvas);
+  const width = canvas.clientWidth || host.clientWidth || 640;
+
   const opts: import("uplot").Options = {
-    width: host.clientWidth || 640,
+    width,
     height: CHART_HEIGHT,
     scales: { x: { time: false } },
     // A crosshair cursor that highlights the nearest series, and drag to zoom the
@@ -90,12 +99,6 @@ export async function renderChart(host: HTMLElement): Promise<UPlot | null> {
     ],
   };
 
-  // Capture the fallback table before uPlot adds its own legend table, so we
-  // hide the right one.
-  const fallbackTable = host.querySelector("table");
-  const canvas = document.createElement("div");
-  canvas.className = "alt-chart-canvas";
-  host.prepend(canvas);
   const chart = new uPlot(opts, aligned as never, canvas);
   // Keep the data table in the DOM for accessibility, but hide it visually now
   // that the chart is the primary representation.
