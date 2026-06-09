@@ -206,6 +206,30 @@ hr {
   padding-left: 3rem;
 }
 
+figure {
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+figure > :first-child {
+  margin-top: 0;
+}
+
+figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.alt-figlabel {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.alt-xref {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Components -------------------------------------------------------------- */
 
 .alt-callout {

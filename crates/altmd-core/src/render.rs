@@ -40,66 +40,105 @@ struct RenderState {
     headings: Vec<Heading>,
     cursor: usize,
     labels: HashMap<String, Label>,
+    /// Per-kind figure counters, advanced as figures are rendered. They count in
+    /// the same document order as the pre-pass, so a figure's rendered number
+    /// matches the number stored for it in `labels`.
+    fig_counters: HashMap<String, u32>,
+}
+
+/// The result of the single pre-pass over the document: the heading list (for
+/// `:::toc` and the heading cursor) and the label table every cross-reference
+/// resolves against.
+#[derive(Default)]
+struct Prepass {
+    headings: Vec<Heading>,
+    labels: HashMap<String, Label>,
+    seen_slugs: HashMap<String, u32>,
+    fig_counters: HashMap<String, u32>,
 }
 
 /// Render a [`Document`] to an HTML string.
 #[must_use]
 pub fn render_document(document: &Document) -> String {
-    let mut headings = Vec::new();
-    let mut seen = HashMap::new();
-    collect_headings(&document.blocks, &mut headings, &mut seen);
-    // Build the cross-reference table. Sections are referenced by their anchor
-    // slug and display their heading text; numbered targets (figures, tables)
-    // are added by their own pre-passes.
-    let mut labels = HashMap::new();
-    for heading in &headings {
-        labels.insert(
-            heading.slug.clone(),
-            Label {
-                anchor: heading.slug.clone(),
-                text: heading.text.clone(),
-            },
-        );
-    }
+    let mut pre = Prepass::default();
+    collect_labels(&document.blocks, &mut pre);
     let mut state = RenderState {
-        headings,
+        headings: pre.headings,
         cursor: 0,
-        labels,
+        labels: pre.labels,
+        fig_counters: HashMap::new(),
     };
     let mut out = String::new();
     render_blocks(&document.blocks, &mut state, &mut out);
     out
 }
 
-/// Walk the document once before rendering to give every heading a unique anchor
-/// slug, so `:::toc` can link to headings that appear after it and so repeated
-/// heading text still gets distinct ids.
-fn collect_headings(blocks: &[Block], out: &mut Vec<Heading>, seen: &mut HashMap<String, u32>) {
+/// Walk the document once before rendering to collect every cross-reference
+/// target. Each heading gets a unique anchor slug (so `:::toc` and references can
+/// link to headings that appear later, and repeated headings get distinct ids)
+/// and a label showing its text; each `:::figure` is counted per kind and gets a
+/// label showing its auto-number (for example "Figure 3"). The render walk
+/// traverses blocks in this same order, so render-time figure numbers match.
+fn collect_labels(blocks: &[Block], pre: &mut Prepass) {
     for block in blocks {
         match block {
             Block::Heading { level, content } => {
                 let text = inline_text(content);
-                let slug = unique_slug(&slugify(&text), seen);
-                out.push(Heading {
+                let slug = unique_slug(&slugify(&text), &mut pre.seen_slugs);
+                pre.labels.insert(
+                    slug.clone(),
+                    Label {
+                        anchor: slug.clone(),
+                        text: text.clone(),
+                    },
+                );
+                pre.headings.push(Heading {
                     level: *level,
                     slug,
                     text,
                 });
             }
-            Block::BlockQuote(blocks) => collect_headings(blocks, out, seen),
-            Block::List(list) => {
-                for item in &list.items {
-                    collect_headings(&item.blocks, out, seen);
+            Block::Component(component) if component.name == "figure" => {
+                let (key, prefix) = figure_kind(&component.attrs);
+                let counter = pre.fig_counters.entry(key.to_owned()).or_insert(0);
+                *counter += 1;
+                if let Some(id) = &component.attrs.id {
+                    pre.labels.insert(
+                        id.clone(),
+                        Label {
+                            anchor: id.clone(),
+                            text: format!("{prefix} {counter}"),
+                        },
+                    );
+                }
+                if let ComponentBody::Children(children) = &component.body {
+                    collect_labels(children, pre);
                 }
             }
-            Block::FootnoteDefinition { blocks, .. } => collect_headings(blocks, out, seen),
+            Block::BlockQuote(blocks) => collect_labels(blocks, pre),
+            Block::List(list) => {
+                for item in &list.items {
+                    collect_labels(&item.blocks, pre);
+                }
+            }
+            Block::FootnoteDefinition { blocks, .. } => collect_labels(blocks, pre),
             Block::Component(component) => {
                 if let ComponentBody::Children(blocks) = &component.body {
-                    collect_headings(blocks, out, seen);
+                    collect_labels(blocks, pre);
                 }
             }
             _ => {}
         }
+    }
+}
+
+/// Map a `:::figure` `kind` attribute to its counter key and caption prefix. An
+/// unrecognised kind falls back to a figure.
+fn figure_kind(attrs: &Attrs) -> (&'static str, &'static str) {
+    match attrs.get("kind") {
+        Some("table") => ("table", "Table"),
+        Some("listing") => ("listing", "Listing"),
+        _ => ("figure", "Figure"),
     }
 }
 
@@ -271,6 +310,12 @@ fn render_component(component: &Component, state: &mut RenderState, out: &mut St
     if !is_safe_name(&component.name) {
         return;
     }
+    // A figure is a numbered, captioned wrapper rendered as native semantic HTML
+    // (no runtime needed), not an upgradeable custom element.
+    if component.name == "figure" {
+        render_figure(component, state, out);
+        return;
+    }
     let tag = format!("alt-{}", component.name);
     out.push('<');
     out.push_str(&tag);
@@ -278,6 +323,31 @@ fn render_component(component: &Component, state: &mut RenderState, out: &mut St
     out.push('>');
     render_fallback(component, state, out);
     out.push_str(&format!("</{tag}>\n"));
+}
+
+/// Render a `:::figure` as a native `<figure>` with an auto-numbered caption. The
+/// number comes from a render-time per-kind counter that advances in the same
+/// document order as the pre-pass, so it matches the number a cross-reference to
+/// this figure shows.
+fn render_figure(component: &Component, state: &mut RenderState, out: &mut String) {
+    let (key, prefix) = figure_kind(&component.attrs);
+    let counter = state.fig_counters.entry(key.to_owned()).or_insert(0);
+    *counter += 1;
+    let number = *counter;
+    out.push_str("<figure");
+    if let Some(id) = &component.attrs.id {
+        out.push_str(&format!(" id=\"{}\"", escape_attr(id)));
+    }
+    out.push_str(">\n");
+    render_children(component, state, out);
+    out.push_str(&format!(
+        "<figcaption><span class=\"alt-figlabel\">{prefix} {number}</span>"
+    ));
+    if let Some(caption) = component.attrs.get("caption") {
+        out.push_str(": ");
+        out.push_str(&escape_html(caption));
+    }
+    out.push_str("</figcaption>\n</figure>\n");
 }
 
 /// Render a component's mandatory static fallback: semantic HTML that reads well
@@ -847,6 +917,43 @@ mod tests {
         let html = render("see [#nope] here");
         assert!(html.contains("[#nope]"), "literal text lost: {html}");
         assert!(!html.contains("alt-xref"), "should not be a link: {html}");
+    }
+
+    #[test]
+    fn figure_renders_a_native_numbered_caption() {
+        let html = render(":::figure{#fig:one caption=\"First plot\"}\n![](a.png)\n:::");
+        assert!(html.contains("<figure id=\"fig:one\">"), "{html}");
+        assert!(
+            html.contains(
+                "<figcaption><span class=\"alt-figlabel\">Figure 1</span>: First plot</figcaption>"
+            ),
+            "{html}"
+        );
+        // A figure is native semantic HTML, not an upgradeable custom element.
+        assert!(!html.contains("<alt-figure"), "{html}");
+    }
+
+    #[test]
+    fn figures_and_tables_number_independently() {
+        let src = concat!(
+            ":::figure{caption=\"a\"}\nx\n:::\n\n",
+            ":::figure{kind=table caption=\"t\"}\ny\n:::\n\n",
+            ":::figure{caption=\"b\"}\nz\n:::",
+        );
+        let html = render(src);
+        assert!(html.contains("Figure 1</span>: a"), "{html}");
+        assert!(html.contains("Table 1</span>: t"), "{html}");
+        assert!(html.contains("Figure 2</span>: b"), "{html}");
+    }
+
+    #[test]
+    fn cross_reference_to_a_figure_shows_its_number() {
+        // Forward reference to a figure resolves to its auto-number.
+        let html = render("see [#fig:plot]\n\n:::figure{#fig:plot caption=\"P\"}\nx\n:::");
+        assert!(
+            html.contains("<a class=\"alt-xref\" href=\"#fig:plot\">Figure 1</a>"),
+            "{html}"
+        );
     }
 
     #[test]

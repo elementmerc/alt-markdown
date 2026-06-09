@@ -145,6 +145,29 @@ th {
 
 /* Components ------------------------------------------------------------- */
 
+figure {
+  margin: 1.5rem 0;
+}
+
+figure > :first-child {
+  margin-top: 0;
+}
+
+figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.alt-figlabel {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.alt-xref {
+  font-variant-numeric: tabular-nums;
+}
+
 .alt-callout {
   margin: 1.5rem 0;
   padding: 1rem 1.25rem;
