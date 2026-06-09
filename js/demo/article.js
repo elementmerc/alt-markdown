@@ -12,6 +12,7 @@ const ARTICLES = {
   cybersecurity: "The Anatomy of a Cross-Site Scripting Attack",
   "cs-lewis": "C. S. Lewis on the Reading of Old Books",
   "paradox-of-genius": "The Paradox of Genius",
+  languages: "🌍 Babel: every script, every dirty trick",
 };
 
 function fail(message) {

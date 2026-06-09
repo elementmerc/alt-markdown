@@ -1,0 +1,209 @@
+# 🌍 Babel: every script, every dirty trick
+
+This article is hostile on purpose. It is written to break a renderer: it mixes
+left-to-right and right-to-left scripts, stacks combining marks into nonsense,
+hides zero-width characters inside ordinary words, disguises `<script>` tags as
+look-alike glyphs, and smuggles a bidirectional override that tries to make text
+lie about itself.[^bidi] If you are reading this and the page is still standing,
+the format treated every codepoint as content, not command.
+
+:::callout{type=danger}
+Everything below is a real Unicode edge case or attack. None of it should change
+the meaning of the page, run anything, or scramble the layout outside its own
+little box. That is the whole test.
+:::
+
+:::toc
+:::
+
+## The world does not write in ASCII
+
+English is a rounding error in the world's text. A document format that wants to
+displace markdown has to be fluent in every script a human might type, including
+the ones that run the other way. Here is a small census of writing systems, each
+named in its own script, with the speaker counts left deliberately rough.[^scripts]
+
+| Script | Native name | Direction | Speakers (m) |
+|:-------|:------------|:----------|-------------:|
+| Latin | Latin | →  | 2,000 |
+| Han | 中文 | → | 1,100 |
+| Arabic | العربية | ← | 370 |
+| Hebrew | עברית | ← | 9 |
+| Devanagari | हिन्दी | → | 600 |
+| Cyrillic | Русский | → | 250 |
+| Greek | Ελληνικά | → | 13 |
+| Thai | ไทย | → | 60 |
+| Japanese | 日本語 | both | 125 |
+| Hangul | 한국어 | → | 80 |
+
+That table contains right-to-left cells sitting next to left-to-right ones, a
+pipe character that has to be escaped inside Arabic text (العربية \| punctuation),
+and numbers that align on the right while the words align on the left. If the
+columns survived, the parser is honest about cell boundaries no matter which
+direction the script inside them flows.
+
+## Emoji are not characters
+
+People think of an emoji as one character. Almost none of them are. A single
+"family" emoji 👨‍👩‍👧‍👦 is four people glued together with invisible
+zero-width joiners, seven codepoints pretending to be one glyph. A thumbs-up with
+a skin tone 👍🏽 is two codepoints. A flag 🇯🇵 is two regional-indicator
+letters that a font happens to draw as Japan; type 🇳🇬 and you get Nigeria from
+the very same trick. A keycap 1️⃣ is a digit, a variation selector, and a
+combining enclosing keycap, stacked.
+
+The test is whether counting, escaping, and breaking text treats these as the
+indivisible units a reader sees, rather than slicing a family in half. Here is a
+paragraph that leans on them: cooking 🍳, shipping 🚢, building 🏗️, and the
+occasional fire 🔥, all flowing inline with ordinary words and **bold emphasis 🎯**
+pressed right up against a glyph.
+
+## Combining marks, or how to make a mess
+
+Below ordinary letters there is a second layer: combining marks that stack onto
+the character before them. Used well, they put the accent on café and the umlaut
+on Zürich. Used badly, on purpose, they produce "Zalgo": Z̸̧̢a̵̧l̷g̵o̶̧, a
+tower of diacritics that has no upper bound. A naive renderer that measured line
+height from the tallest glyph would have its layout shoved around by a single
+word. The fix is to let the text layer handle it and clip nothing: the mess stays
+inside its own line.
+
+## The look-alikes
+
+Not every attack is loud. Some are glyphs that impersonate other glyphs.
+
+- A homoglyph domain: аpple.com looks like a fruit company, but that first letter
+  is a Cyrillic а (U+0430), not a Latin a. A link to it would phish.
+- A disguised tag: ＜script＞alert(1)＜/script＞ uses fullwidth angle brackets
+  (U+FF1C, U+FF1E). It looks like a script tag but the renderer never sees an
+  ASCII `<`, so it is plain text, drawn and inert.
+- A disguised scheme: a link written as `javascript：void(0)` with a fullwidth
+  colon (U+FF1A) is not the `javascript:` scheme at all, so even if it parsed it
+  could not run.
+
+The lesson is the same as everywhere else in this format: an allow-list of real,
+recognised constructs beats a block-list of forbidden spellings, because the
+attacker has an unlimited supply of look-alikes and the defender does not have to
+care.
+
+## A bidirectional booby trap
+
+The nastiest trick in text is the bidirectional override. The character U+202E
+flips the direction of everything after it, so source code can be made to read
+one way for a human and run another way for the machine. This is the "Trojan
+Source" class. Here is a line that contains a real override, defused as a code
+block:
+
+```
+access = "user"; // ‮ nigeb ;”nimda“ = ssecca‭ harmless?
+```
+
+The renderer strips that override before it reaches the page, so what you see is
+the true byte order: garbled, perhaps, but honest, and never able to make the
+bytes and the rendering disagree. That is what defeats the spoof. Real
+right-to-left text needs no override to display correctly, so nothing legitimate
+is lost.
+
+## Charts speak every language
+
+The graphics have to cope too. This bar chart labels its axis in five scripts at
+once, drawn straight onto a canvas:
+
+```chart kind=bar
+language,speakers (millions)
+中文,1100
+English,1500
+हिन्दी,600
+العربية,370
+Español,560
+```
+
+If the bars line up with their labels, the chart read its data table without
+caring what script the first column was written in.
+
+## A family tree of tongues
+
+```diagram
+mindmap
+  root((🌍 Languages))
+    Indo-European
+      English
+      हिन्दी
+      Русский
+    Sino-Tibetan
+      中文
+      བོད་སྐད
+    Afro-Asiatic
+      العربية
+      עברית
+    Niger-Congo
+      Yorùbá
+      isiZulu
+```
+
+A mind map whose every branch is a different writing system, including Tibetan
+and a couple of African languages that ASCII cannot spell, rendered inside the
+usual locked iframe.
+
+## Even the maths
+
+Set theory is happy to borrow from Hebrew. The number of finite strings over any
+alphabet, Latin or otherwise, is countable:
+
+```math
+|\Sigma^*| = \aleph_0
+```
+
+That ℵ (aleph) is a Hebrew letter doing a day job in mathematics, and KaTeX draws
+it without complaint.
+
+## Two directions, two tabs
+
+::::tabs
+:::tab{title=English}
+This tab reads left to right, the way this whole article's prose does, and nothing
+about the Arabic in the next tab should disturb it.
+:::
+:::tab{title=العربية}
+هذا النص يُقرأ من اليمين إلى اليسار. النقطة هي أن علامات التبويب نفسها تعمل بغض
+النظر عن اتجاه النص بداخلها، وأن الإنجليزية في علامة التبويب الأخرى تبقى سليمة.
+:::
+::::
+
+## 日本語 の 見出し
+
+A heading written in Japanese, with another in العربية and one in Ελληνικά below,
+exists to prove the table of contents can link to an anchor that contains no ASCII
+letter at all. Scroll up: those headings are in the contents list, and clicking
+them jumps here.
+
+### العربية
+
+A right-to-left heading. Its anchor is built from the same letters you see.
+
+### Ελληνικά
+
+And a Greek one, because the alphabet that named the alphabet should get a section.
+
+## The honest conclusion
+
+- [x] Right-to-left scripts render and stay inside their cells
+- [x] Emoji built from many codepoints survive as single glyphs
+- [x] Look-alike tags and schemes are inert text, not markup
+- [x] Bidirectional overrides are stripped, so they cannot reorder anything
+- [ ] Every script has a font on every device (not our job, but a real limit)
+
+> A format that only speaks English is a dialect, not a standard. The test of a
+> universal document is not the language it was designed in; it is the language it
+> was not.
+
+If you reached the end without the page reversing itself, a dialog appearing, or
+the layout collapsing under a pile of accents, then every trick above was handled
+as what it really is: text.
+
+[^bidi]: The bidirectional override is U+202E, RIGHT-TO-LEFT OVERRIDE. The
+"Trojan Source" research (2021) showed it could hide malicious logic in plain
+sight inside source code across most compilers and editors.
+[^scripts]: Speaker counts are rounded and combine first and second language
+speakers, which is why they are deliberately labelled rough; the point is the
+scripts, not the statistics.

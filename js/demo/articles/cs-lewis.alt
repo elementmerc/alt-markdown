@@ -1,84 +1,151 @@
 # C. S. Lewis on the Reading of Old Books
 
-There is a strange idea abroad that in every subject the ancient books should be
-read only by the professional, and that the amateur should content himself with
-the modern books.[^intro] Lewis thought this exactly backwards.
+There is a strange idea abroad that in every subject the ancient books should be read only by the professional, and that the amateur should content himself with the modern books.[^intro] Lewis thought this exactly backwards. The amateur, he argued, is precisely the person who most needs the old books, because he is the least equipped to notice when his own century is talking nonsense.
 
 :::callout{type=note}
-This essay first appeared in 1944 as the introduction to a translation of
-Athanasius. The argument it makes about *books* turns out to be an argument
-about *formats* too: what survives is what stays readable.
+This essay first appeared in 1944 as the introduction to a translation of Athanasius. The argument it makes about books turns out to be an argument about formats too: what survives is what stays readable.
 :::
 
-## The argument in his own words
+:::toc
+:::
 
-> Naturally, since I myself am a writer, I do not wish the ordinary reader to
-> read no modern books. But if he must read only the new or only the old, I
-> would advise him to read the old.
+## The clean sea breeze of the centuries
+
+Every age has its own outlook. It is specially good at seeing certain truths and specially liable to make certain mistakes. We all, therefore, need the books that will correct the characteristic mistakes of our own period. And that means we need the old books. Lewis put it with a phrase that has outlived almost everything else he wrote in that introduction: the only palliative is to keep "the clean sea breeze of the centuries blowing through our minds", and that can be done only by reading the old books.[^breeze]
+
+The point is not that our ancestors were cleverer. They were not. They made plenty of mistakes of their own. But their mistakes were *different* mistakes, and a book written three hundred years ago will not flatter the particular vanity of the present moment, because it has never heard of it. Two ages reading each other are like two people comparing notes: where they agree, you can be fairly sure you have hit on something true, and where they differ, at least you have learned that the thing is not obvious.
+
+> Naturally, since I myself am a writer, I do not wish the ordinary reader to read no modern books. But if he must read only the new or only the old, I would advise him to read the old.
 >
-> > And I would give him this advice precisely because he is an amateur and
-> > therefore much less protected than the expert against the dangers of an
-> > exclusive contemporary diet.
+> > And I would give him this advice precisely because he is an amateur and therefore much less protected than the expert against the dangers of an exclusive contemporary diet.
+> >
+> >> A new book is still on its trial, and the amateur is not in a position to judge it. It has to be tested against the great body of Christian thought down the ages, and all its hidden implications (often unsuspected by the author himself) have to be brought to light.
 
-The quotation above nests one block inside another, two levels deep, and the
-format keeps both rules intact.
+## Chronological snobbery
+
+Lewis had a name for the error he was warning against. He called it *chronological snobbery*: "the uncritical acceptance of the intellectual climate common to our own age and the assumption that whatever has gone out of date is on that account discredited."[^snob] He learned to distrust it from his friend Owen Barfield, who taught him to ask, of any idea that had been abandoned, *why* it went out of date. Was it actually refuted? By whom? With what arguments? Or did it simply fall out of fashion, the way hemlines do, and was therefore never refuted at all?
+
+:::callout{type=warning}
+The trap is subtle. We rarely say out loud "this is true because it is recent." We just *feel* that older views are quaint, and the feeling does the work an argument should have done.
+:::
+
+It is a remarkably modern-sounding warning for a man writing eighty years ago, which is rather the point.
 
 ## Three works, three doors
 
-Readers arrive at Lewis through very different books. Pick a door:
+People come to Lewis through very different doors, and the door you enter by tends to colour the whole house.
 
 ::::tabs
 :::tab{title=Apologetics}
-*Mere Christianity* began as wartime radio talks. Its method is plain: start
-from something the listener already grants, then walk one careful step at a time.
+*Mere Christianity* began as wartime radio talks on the BBC, plain enough for a tired listener at the end of a long day, yet tight enough that the arguments still draw blood. Its trick is tone: Lewis never sounds like a man trying to win, only like a man trying to be clear.
 :::
 :::tab{title=Fiction}
-*The Chronicles of Narnia* smuggle the same ideas past what he called the
-"watchful dragons" of a too-solemn reverence.
+*The Lion, the Witch and the Wardrobe* smuggles the same convictions past the reader's defences by the simple device of a wardrobe and a lamp post in the snow. Children meet it as a story; adults reread it and find the story was an argument all along.
 :::
 :::tab{title=Grief}
-*A Grief Observed*, published under a pseudonym, is the unguarded notebook of a
-man watching his own faith tested by loss.
+*A Grief Observed*, written after the death of his wife Joy, is the opposite of apologetics: a man with all the answers discovering that grief does not care about answers. He published it under a pseudonym. It is his most honest book.
 :::
 ::::
 
 ## A line worth typesetting
 
-He believed glory was not vanity but *weight*, a thing with real mass. If we let
-ourselves be playful and write that as an equation, the point is that the term
-never vanishes:
+Lewis loved to make a serious claim sound like a joke and a joke sound serious. So let us put one of his convictions in the only notation that pretends to certainty. If *Glory* is the value that a soul still carries however long time runs, then his whole theology insists:
 
 ```math
 \lim_{t \to \infty} \text{Glory}(t) \neq 0
 ```
 
-## The shape of a life
+The limit does not collapse to zero. Whatever else fades, that does not. He would have hated the equation and loved the cheek of it.
+
+## A life in three numbers
+
+He was born in Belfast in 1898, lost his faith as a clever young atheist, and came back to it on a motorcycle ride to Whipsnade Zoo in 1931, of all the undramatic places to be converted. He taught at Oxford and then Cambridge, wrote more than thirty books, and died on 22 November 1963, a date the world barely noticed because two larger deaths happened the same afternoon.[^date]
 
 ```diagram
 timeline
-  title A brief life of C. S. Lewis
+  title A brief life
   1898 : Born in Belfast
-  1917 : Trenches of the First World War
-  1931 : Returns to Christian faith
-  1942 : The Screwtape Letters
+  1916 : Wins scholarship to Oxford
+  1931 : Returns to faith on the way to Whipsnade
+  1942 : Broadcast talks become Mere Christianity
   1950 : The Lion, the Witch and the Wardrobe
+  1956 : Marries Joy Davidman
   1963 : Dies in Oxford
 ```
 
+His output was not evenly spread. It came in bursts, clustered around the war years and the decade after, when the children's books arrived almost one a year.
+
+```chart kind=line
+decade,books published
+1930s,4
+1940s,9
+1950s,11
+1960s,3
+```
+
+## The Inklings
+
+Lewis did not write alone. On Tuesday mornings he met a loose circle of friends in a back room of a pub called the Eagle and Child, known to them as the Bird and Baby, and on Thursday evenings in his college rooms. They read their work aloud to each other and tore it apart. The two names that survive loudest are Lewis's own and J. R. R. Tolkien's, and the debt runs both ways: Tolkien helped argue Lewis back into Christianity, and Lewis nagged Tolkien for years to finish *The Lord of the Rings*, which might otherwise have died in a drawer.
+
+```diagram
+mindmap
+  root((The Inklings))
+    Lewis
+      Narnia
+      Apologetics
+      Criticism
+    Tolkien
+      Middle-earth
+      Philology
+    Williams
+      Theology
+      Poetry
+    Barfield
+      Chronological snobbery
+```
+
+## The range of the work
+
+It is easy to forget how wide his range was, because the children's books and the apologetics crowd out the rest. He was, by day, a serious scholar of medieval and Renaissance literature, and that work may outlast the popular books among the people who care about such things.
+
+| Work | Kind | Year | Still in print? |
+|---|---|:---:|---|
+| The Allegory of Love | Criticism | 1936 | Yes |
+| The Screwtape Letters | Satire \| fiction | 1942 | Yes |
+| Mere Christianity | Apologetics | 1952 | Yes |
+| A Preface to Paradise Lost | Criticism | 1942 | — |
+| Till We Have Faces | Fiction | 1956 | Yes |
+| A Grief Observed | Memoir | 1961 | |
+
+The empty and dashed cells are not an oversight; they are the honest answer. Some of his books are read by everyone, some by almost no one, and the difference is not a measure of their worth.
+
 ## For the curious
 
-alt-accordion below hides the full closing paragraph until you want it.
+:::accordion{title="Read the famous 'no ordinary people' passage"}
+From *The Weight of Glory*, 1941:
 
-:::accordion{title="Read the famous closing lines"}
-He wrote that there are no *ordinary* people, that you have never talked to a
-mere mortal. Nations, cultures, arts, civilisations, these are mortal, and their
-life is to ours as the life of a gnat. But it is immortals whom we joke with,
-work with, marry, snub, and exploit.
+> There are no *ordinary* people. You have never talked to a mere mortal. Nations, cultures, arts, civilisations, these are mortal, and their life is to ours as the life of a gnat. But it is immortals whom we joke with, work with, marry, snub, and exploit, immortal horrors or everlasting splendours.
+
+It is the most quoted thing he ever wrote, and the one he would least want quoted *at* people rather than *about* them.
 :::
 
-The passage above is full of the punctuation that breaks lesser parsers:
-apostrophes, commas in series, and emphasis pressed right up against words. It
-round-trips cleanly.
+## What survives
 
-[^intro]: From *On the Reading of Old Books*, C. S. Lewis, 1944. The essay is now
-in the public domain in several jurisdictions and is widely anthologised.
+Here is the thread that ties the whole essay together. Lewis's case for old books was, underneath, a case about *durability*: an idea worth keeping is one that can be carried, undamaged, from one century into another that has never heard of it. The container has to be transparent enough that a stranger can pick it up and read it cold.
+
+That is exactly the test a document format has to pass. A file written today is worth keeping only if a reader in fifty years can open it without the original tool, the original platform, or the original fashions of the moment. Lewis wanted prose that survived the centuries; the same instinct wants text that survives the software. Plain words on a page have done it for two thousand years. Whatever we build on top of them earns its place only if, when the cleverness is stripped away, the plain words are still sitting there, readable, in the clean sea breeze of the centuries.
+
+:::callout{type=success}
+The good news is that this is not nostalgia. It is engineering. Build the rich thing so that the plain thing underneath still works, and you have made something that can outlive you, which is the only kind of book, or format, worth making.
+:::
+
+---
+
+> A young man who wishes to remain a sound atheist cannot be too careful of his reading.
+>
+> C. S. Lewis, *Surprised by Joy*
+
+[^intro]: From *On the Reading of Old Books*, C. S. Lewis, 1944.
+[^breeze]: The metaphor recurs throughout the essay; it is the line most often quoted from it, and the one most often quoted without attribution.
+[^snob]: From *Surprised by Joy*, 1955, the chapter recounting his friendship with Owen Barfield.
+[^date]: He died on the same afternoon as John F. Kennedy and Aldous Huxley, 22 November 1963.

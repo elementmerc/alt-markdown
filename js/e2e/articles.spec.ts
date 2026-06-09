@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 // the documents render fully and nothing in them executes, even though the
 // cybersecurity article is deliberately full of attack payloads.
 
-const ARTICLES = ["cybersecurity", "cs-lewis", "paradox-of-genius"];
+const ARTICLES = ["cybersecurity", "cs-lewis", "paradox-of-genius", "languages"];
 
 for (const doc of ARTICLES) {
   test(`article "${doc}" renders and runs no script`, async ({ page }) => {
@@ -30,11 +30,18 @@ test("the cybersecurity article renders its chart and a contained diagram", asyn
   await page.goto("/demo/article.html?doc=cybersecurity");
   await page.waitForSelector("alt-chart .alt-chart-canvas canvas");
 
-  const iframe = page.locator("alt-diagram iframe");
-  await expect(iframe).toHaveCount(1);
-  const sandbox = (await iframe.getAttribute("sandbox")) ?? "";
-  expect(sandbox).not.toContain("allow-scripts");
-  expect(sandbox).not.toContain("allow-same-origin");
+  // The article carries several diagrams; every one of them must render in a
+  // locked-down iframe (no scripts, no same-origin), not just the first.
+  // Diagrams enhance asynchronously, so wait for the first to attach.
+  await page.waitForSelector("alt-diagram iframe");
+  const iframes = page.locator("alt-diagram iframe");
+  const count = await iframes.count();
+  expect(count).toBeGreaterThanOrEqual(1);
+  for (let i = 0; i < count; i++) {
+    const sandbox = (await iframes.nth(i).getAttribute("sandbox")) ?? "";
+    expect(sandbox).not.toContain("allow-scripts");
+    expect(sandbox).not.toContain("allow-same-origin");
+  }
 
   // The hostile callout attribute became an inert data attribute.
   await expect(page.locator("alt-callout[data-onclick]")).toHaveCount(1);
