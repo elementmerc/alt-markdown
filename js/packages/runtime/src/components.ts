@@ -83,6 +83,7 @@ class TabsElement extends AltElement {
 class ChartElement extends AltElement {
   #chart: UPlot | null = null;
   #observer: ResizeObserver | null = null;
+  #frame = 0;
 
   protected override enhance(): void {
     // Lazy-loaded; a failure leaves the accessible fallback table in place.
@@ -107,23 +108,43 @@ class ChartElement extends AltElement {
    * has to be pushed in explicitly.
    */
   #observeWidth(chart: UPlot): void {
+    // Measure and observe the block-level chart container, not the host: the
+    // custom element is inline by default, so its clientWidth is 0. The
+    // container's width tracks the column, and reconciling against the chart's
+    // own current width corrects any build-time mismatch. The 1px tolerance
+    // stops sub-pixel jitter from starting a resize/scrollbar feedback loop.
+    const box = this.querySelector<HTMLElement>(".alt-chart-canvas") ?? this;
+    const sync = (): void => {
+      const width = box.clientWidth;
+      if (width > 0 && Math.abs(width - chart.width) > 1) {
+        chart.setSize({ width, height: CHART_HEIGHT });
+      }
+    };
+    sync(); // correct any build-time mismatch immediately
     if (typeof ResizeObserver === "undefined") {
       return;
     }
-    let lastWidth = this.clientWidth;
+    // Coalesce a burst of resize callbacks (a window drag) into one redraw per
+    // frame; a full uPlot redraw per raw callback is what made resizing feel slow.
     this.#observer = new ResizeObserver(() => {
-      const width = this.clientWidth;
-      if (width > 0 && width !== lastWidth) {
-        lastWidth = width;
-        chart.setSize({ width, height: CHART_HEIGHT });
+      if (this.#frame) {
+        return;
       }
+      this.#frame = requestAnimationFrame(() => {
+        this.#frame = 0;
+        sync();
+      });
     });
-    this.#observer.observe(this);
+    this.#observer.observe(box);
   }
 
   disconnectedCallback(): void {
     this.#observer?.disconnect();
     this.#observer = null;
+    if (this.#frame) {
+      cancelAnimationFrame(this.#frame);
+      this.#frame = 0;
+    }
     this.#chart?.destroy();
     this.#chart = null;
   }
