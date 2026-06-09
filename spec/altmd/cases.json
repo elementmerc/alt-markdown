@@ -70,6 +70,12 @@
     "contains": ["<input type=\"checkbox\" checked disabled /> done", "<input type=\"checkbox\" disabled /> todo"]
   },
   {
+    "name": "ai-policy-is-invisible-metadata",
+    "input": ":::ai-policy\n- Intro: read-only\n:::\n\n# Intro\n\nbody\n",
+    "contains": ["<h1 id=\"intro\">Intro</h1>"],
+    "lacks": ["read-only", "ai-policy"]
+  },
+  {
     "name": "unknown-directive-fails",
     "input": ":::nope\nx\n:::\n",
     "error": true

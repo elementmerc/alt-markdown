@@ -200,6 +200,33 @@ absolute paths, and symlink escapes are all refused, the include graph is checke
 for cycles, and nesting depth is capped. In the browser, where there is no
 filesystem, an include renders a link to its source instead.
 
+## AI edit policy
+
+A document may declare which of its sections an AI agent is allowed to edit, with
+an `:::ai-policy` block. Each entry names a section (by its heading text or its
+anchor slug) and a permission: `read-only`, `editable`, or `append-only`. A
+`default` attribute sets the permission for any section the policy does not name;
+the default is `editable`.
+
+```
+:::ai-policy{model=any}
+- Introduction: read-only
+- Draft notes: editable
+:::
+```
+
+The block produces no visible output; it is machine-readable metadata. A host
+reads it through `altmd policy` (or the `policy` function in the WebAssembly
+build), which returns the permission map and answers whether a named section may
+be written.
+
+This is a convention, not a sandbox, and the guarantee comes from the host
+enforcing it. `altmd policy --section NAME` exits non-zero for a read-only
+section, so an editing tool or a commit hook can refuse the write. A model that is
+told about the policy will usually respect it, but only host enforcement makes
+read-only binding. A host should also treat the `:::ai-policy` block itself as
+read-only, because an edit can otherwise drop it.
+
 ## Component vocabulary
 
 Every component declares a mandatory static fallback, so a plain CommonMark reader
@@ -215,6 +242,7 @@ and any lossy export still show something sensible.
 | `figure`     | directive         | figure with caption     | 1.0   |
 | `references` | directive         | ordered list            | 1.0   |
 | `include`    | directive         | link to the source      | 1.0   |
+| `ai-policy`  | directive         | none (metadata)         | 1.0   |
 | `chart`      | fence             | data table              | 1.0   |
 | `table`      | fence             | data table              | 1.0   |
 | `math`       | fence             | code span               | 1.0   |

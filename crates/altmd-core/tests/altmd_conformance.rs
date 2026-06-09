@@ -15,6 +15,8 @@ struct Case {
     #[serde(default)]
     contains: Vec<String>,
     #[serde(default)]
+    lacks: Vec<String>,
+    #[serde(default)]
     error: bool,
 }
 
@@ -50,6 +52,13 @@ fn altmd_extension_conformance() {
             assert!(
                 html.contains(needle.as_str()),
                 "case {}: expected {needle:?} in:\n{html}",
+                case.name
+            );
+        }
+        for needle in &case.lacks {
+            assert!(
+                !html.contains(needle.as_str()),
+                "case {}: did not expect {needle:?} in:\n{html}",
                 case.name
             );
         }
