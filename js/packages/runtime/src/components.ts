@@ -154,6 +154,39 @@ export function enhanceTaskLists(root: ParentNode): void {
   });
 }
 
+/** Block-level elements that get a gentle fade-and-rise as they scroll in. */
+const REVEAL_SELECTOR =
+  "alt-chart, alt-diagram, alt-math, alt-callout, alt-tabs, alt-accordion, table, pre, blockquote";
+
+/**
+ * Add a tasteful scroll-reveal to the heavier blocks: each fades and rises into
+ * place the first time it enters the viewport. Elements already on screen reveal
+ * at once, and readers who prefer reduced motion get no animation (the CSS
+ * honours `prefers-reduced-motion`). Pure presentation, no effect on content.
+ */
+export function revealOnScroll(root: ParentNode): void {
+  const targets = Array.from(root.querySelectorAll<HTMLElement>(REVEAL_SELECTOR));
+  // Without IntersectionObserver, leave everything visible rather than hidden.
+  if (targets.length === 0 || typeof IntersectionObserver === "undefined") {
+    return;
+  }
+  const observer = new IntersectionObserver(
+    (entries, obs) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("altmd-revealed");
+          obs.unobserve(entry.target);
+        }
+      }
+    },
+    { rootMargin: "0px 0px -8% 0px", threshold: 0.04 },
+  );
+  for (const target of targets) {
+    target.classList.add("altmd-reveal");
+    observer.observe(target);
+  }
+}
+
 /**
  * Define the component custom elements. Idempotent: re-registering is a no-op, so
  * it is safe to call on every mount.

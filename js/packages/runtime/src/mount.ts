@@ -19,6 +19,8 @@ export function mount(root: Element, safeHtml: string): void {
   registerComponents();
   root.innerHTML = safeHtml;
   enhanceTaskLists(root);
+  // Scroll-reveal is opt-in: a host can call revealOnScroll(root) after mount.
+  // It is off by default because the fade can feel out of place on a document.
 }
 
 /**
