@@ -10,19 +10,112 @@
 //! generated tags are emitted directly (and are therefore preserved), so the
 //! output is safe by construction without a blanket sanitiser pass.
 
+use std::collections::HashMap;
+
 use altmd_ast::{Attrs, Block, Component, ComponentBody, Document, Inline};
+
+/// A document heading, collected up front so that `:::toc` can list every
+/// heading and each rendered heading can carry a stable anchor id.
+struct Heading {
+    level: u8,
+    slug: String,
+    text: String,
+}
+
+/// Render state threaded through the block walk: the headings collected in a
+/// pre-pass, and a cursor that advances in lockstep with the headings the
+/// renderer emits. The pre-pass and the render walk traverse blocks in the same
+/// order, so the cursor always names the heading currently being rendered.
+struct RenderState {
+    headings: Vec<Heading>,
+    cursor: usize,
+}
 
 /// Render a [`Document`] to an HTML string.
 #[must_use]
 pub fn render_document(document: &Document) -> String {
+    let mut headings = Vec::new();
+    let mut seen = HashMap::new();
+    collect_headings(&document.blocks, &mut headings, &mut seen);
+    let mut state = RenderState {
+        headings,
+        cursor: 0,
+    };
     let mut out = String::new();
-    render_blocks(&document.blocks, &mut out);
+    render_blocks(&document.blocks, &mut state, &mut out);
     out
 }
 
-fn render_blocks(blocks: &[Block], out: &mut String) {
+/// Walk the document once before rendering to give every heading a unique anchor
+/// slug, so `:::toc` can link to headings that appear after it and so repeated
+/// heading text still gets distinct ids.
+fn collect_headings(blocks: &[Block], out: &mut Vec<Heading>, seen: &mut HashMap<String, u32>) {
     for block in blocks {
-        render_block(block, out);
+        match block {
+            Block::Heading { level, content } => {
+                let text = inline_text(content);
+                let slug = unique_slug(&slugify(&text), seen);
+                out.push(Heading {
+                    level: *level,
+                    slug,
+                    text,
+                });
+            }
+            Block::BlockQuote(blocks) => collect_headings(blocks, out, seen),
+            Block::List(list) => {
+                for item in &list.items {
+                    collect_headings(&item.blocks, out, seen);
+                }
+            }
+            Block::FootnoteDefinition { blocks, .. } => collect_headings(blocks, out, seen),
+            Block::Component(component) => {
+                if let ComponentBody::Children(blocks) = &component.body {
+                    collect_headings(blocks, out, seen);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Reduce heading text to a URL-friendly anchor slug: lowercase, alphanumerics
+/// kept, every run of other characters collapsed to a single hyphen.
+fn slugify(text: &str) -> String {
+    let mut slug = String::new();
+    let mut pending_hyphen = false;
+    for ch in text.chars() {
+        if ch.is_ascii_alphanumeric() {
+            if pending_hyphen && !slug.is_empty() {
+                slug.push('-');
+            }
+            pending_hyphen = false;
+            slug.push(ch.to_ascii_lowercase());
+        } else {
+            pending_hyphen = true;
+        }
+    }
+    if slug.is_empty() {
+        slug.push_str("section");
+    }
+    slug
+}
+
+/// Disambiguate a slug against those already used in this document, appending
+/// `-1`, `-2`, ... on collision (the convention GitHub and markdown-it follow).
+fn unique_slug(base: &str, seen: &mut HashMap<String, u32>) -> String {
+    let count = seen.entry(base.to_owned()).or_insert(0);
+    let slug = if *count == 0 {
+        base.to_owned()
+    } else {
+        format!("{base}-{count}")
+    };
+    *count += 1;
+    slug
+}
+
+fn render_blocks(blocks: &[Block], state: &mut RenderState, out: &mut String) {
+    for block in blocks {
+        render_block(block, state, out);
     }
 }
 
@@ -30,20 +123,25 @@ fn render_blocks(blocks: &[Block], out: &mut String) {
 /// is emitted as bare inline content (no `<p>` wrapper), per CommonMark, so a
 /// task-list checkbox sits on the same line as its text; other blocks (and all
 /// blocks in a loose list) render normally.
-fn render_item_blocks(blocks: &[Block], tight: bool, out: &mut String) {
+fn render_item_blocks(blocks: &[Block], tight: bool, state: &mut RenderState, out: &mut String) {
     for block in blocks {
         match block {
             Block::Paragraph(content) if tight => render_inlines(content, out),
-            _ => render_block(block, out),
+            _ => render_block(block, state, out),
         }
     }
 }
 
-fn render_block(block: &Block, out: &mut String) {
+fn render_block(block: &Block, state: &mut RenderState, out: &mut String) {
     match block {
         Block::Heading { level, content } => {
             let level = (*level).clamp(1, 6);
-            out.push_str(&format!("<h{level}>"));
+            let slug = state.headings.get(state.cursor).map(|h| h.slug.clone());
+            state.cursor += 1;
+            match slug {
+                Some(slug) => out.push_str(&format!("<h{level} id=\"{}\">", escape_attr(&slug))),
+                None => out.push_str(&format!("<h{level}>")),
+            }
             render_inlines(content, out);
             out.push_str(&format!("</h{level}>\n"));
         }
@@ -54,7 +152,7 @@ fn render_block(block: &Block, out: &mut String) {
         }
         Block::BlockQuote(blocks) => {
             out.push_str("<blockquote>\n");
-            render_blocks(blocks, out);
+            render_blocks(blocks, state, out);
             out.push_str("</blockquote>\n");
         }
         Block::List(list) => {
@@ -76,7 +174,7 @@ fn render_block(block: &Block, out: &mut String) {
                     }
                     None => out.push_str("<li>"),
                 }
-                render_item_blocks(&item.blocks, list.tight, out);
+                render_item_blocks(&item.blocks, list.tight, state, out);
                 out.push_str("</li>\n");
             }
             out.push_str(&format!("</{tag}>\n"));
@@ -101,11 +199,11 @@ fn render_block(block: &Block, out: &mut String) {
                 "<section class=\"footnote\" id=\"fn-{}\">\n",
                 escape_attr(name)
             ));
-            render_blocks(blocks, out);
+            render_blocks(blocks, state, out);
             out.push_str("</section>\n");
         }
         Block::HtmlBlock(html) => out.push_str(&altmd_sanitize::sanitize(html)),
-        Block::Component(component) => render_component(component, out),
+        Block::Component(component) => render_component(component, state, out),
         _ => {}
     }
 }
@@ -141,7 +239,7 @@ fn render_table(table: &altmd_ast::Table, out: &mut String) {
     out.push_str("</table>\n");
 }
 
-fn render_component(component: &Component, out: &mut String) {
+fn render_component(component: &Component, state: &mut RenderState, out: &mut String) {
     // Component names come from the registry, so they are already safe element
     // identifiers; guard anyway against an unexpected name.
     if !is_safe_name(&component.name) {
@@ -152,65 +250,86 @@ fn render_component(component: &Component, out: &mut String) {
     out.push_str(&tag);
     render_attrs(&component.attrs, out);
     out.push('>');
-    render_fallback(component, out);
+    render_fallback(component, state, out);
     out.push_str(&format!("</{tag}>\n"));
 }
 
 /// Render a component's mandatory static fallback: semantic HTML that reads well
 /// with no runtime, which the JS layer then enhances in place.
-fn render_fallback(component: &Component, out: &mut String) {
+fn render_fallback(component: &Component, state: &mut RenderState, out: &mut String) {
     match component.name.as_str() {
-        "callout" => fallback_callout(component, out),
-        "accordion" => fallback_accordion(component, out),
-        "tabs" => fallback_wrap(component, out, "alt-tabs"),
-        "tab" => fallback_tab(component, out),
-        "columns" | "column" => fallback_wrap(component, out, "alt-stack"),
+        "callout" => fallback_callout(component, state, out),
+        "accordion" => fallback_accordion(component, state, out),
+        "tabs" => fallback_wrap(component, state, out, "alt-tabs"),
+        "tab" => fallback_tab(component, state, out),
+        "columns" | "column" => fallback_wrap(component, state, out, "alt-stack"),
         "chart" | "table" => fallback_data_table(component, out),
         "math" => fallback_math(component, out),
         "embed" => fallback_embed(component, out),
-        _ => fallback_default(component, out),
+        "toc" => fallback_toc(state, out),
+        _ => fallback_default(component, state, out),
     }
 }
 
-fn render_children(component: &Component, out: &mut String) {
+fn render_children(component: &Component, state: &mut RenderState, out: &mut String) {
     if let ComponentBody::Children(blocks) = &component.body {
-        render_blocks(blocks, out);
+        render_blocks(blocks, state, out);
     }
 }
 
-fn fallback_callout(component: &Component, out: &mut String) {
+/// Render a table of contents: a `<nav>` linking to every heading in the
+/// document by its anchor slug. Fully static, so it needs no runtime.
+fn fallback_toc(state: &RenderState, out: &mut String) {
+    out.push_str("<nav class=\"alt-toc\" aria-label=\"Table of contents\">");
+    if state.headings.is_empty() {
+        out.push_str("</nav>");
+        return;
+    }
+    out.push_str("\n<ul>\n");
+    for heading in &state.headings {
+        let level = heading.level.clamp(1, 6);
+        out.push_str(&format!(
+            "<li class=\"alt-toc-l{level}\"><a href=\"#{}\">{}</a></li>\n",
+            escape_attr(&heading.slug),
+            escape_html(&heading.text)
+        ));
+    }
+    out.push_str("</ul>\n</nav>");
+}
+
+fn fallback_callout(component: &Component, state: &mut RenderState, out: &mut String) {
     let kind = component.attrs.get("type").unwrap_or("note");
     out.push_str(&format!(
         "<aside class=\"alt-callout alt-callout-{}\" role=\"note\">\n",
         sanitize_class(kind)
     ));
-    render_children(component, out);
+    render_children(component, state, out);
     out.push_str("</aside>");
 }
 
-fn fallback_accordion(component: &Component, out: &mut String) {
+fn fallback_accordion(component: &Component, state: &mut RenderState, out: &mut String) {
     let title = component.attrs.get("title").unwrap_or("Details");
     out.push_str(&format!(
         "<details><summary>{}</summary>\n",
         escape_html(title)
     ));
-    render_children(component, out);
+    render_children(component, state, out);
     out.push_str("</details>");
 }
 
-fn fallback_tab(component: &Component, out: &mut String) {
+fn fallback_tab(component: &Component, state: &mut RenderState, out: &mut String) {
     let title = component.attrs.get("title").unwrap_or("Tab");
     out.push_str(&format!(
         "<section class=\"alt-tab\"><h3>{}</h3>\n",
         escape_html(title)
     ));
-    render_children(component, out);
+    render_children(component, state, out);
     out.push_str("</section>");
 }
 
-fn fallback_wrap(component: &Component, out: &mut String, class: &str) {
+fn fallback_wrap(component: &Component, state: &mut RenderState, out: &mut String, class: &str) {
     out.push_str(&format!("<div class=\"{class}\">\n"));
-    render_children(component, out);
+    render_children(component, state, out);
     out.push_str("</div>");
 }
 
@@ -240,11 +359,11 @@ fn fallback_data_table(component: &Component, out: &mut String) {
     }
 }
 
-fn fallback_default(component: &Component, out: &mut String) {
+fn fallback_default(component: &Component, state: &mut RenderState, out: &mut String) {
     match &component.body {
         ComponentBody::Children(blocks) => {
             out.push('\n');
-            render_blocks(blocks, out);
+            render_blocks(blocks, state, out);
         }
         ComponentBody::Raw(raw) => {
             out.push_str("<pre>");
@@ -441,8 +560,44 @@ mod tests {
     #[test]
     fn renders_basic_blocks() {
         let html = render("# Title\n\nsome **bold** text");
-        assert!(html.contains("<h1>Title</h1>"), "{html}");
+        assert!(html.contains("<h1 id=\"title\">Title</h1>"), "{html}");
         assert!(html.contains("<strong>bold</strong>"), "{html}");
+    }
+
+    #[test]
+    fn headings_get_unique_anchor_slugs() {
+        let html = render("# Hello World\n\n## Hello World\n\n## A & B!");
+        assert!(html.contains("<h1 id=\"hello-world\">"), "{html}");
+        // A repeated heading is disambiguated, not duplicated.
+        assert!(html.contains("<h2 id=\"hello-world-1\">"), "{html}");
+        // Punctuation collapses to single hyphens, no leading/trailing hyphen.
+        assert!(html.contains("<h2 id=\"a-b\">"), "{html}");
+    }
+
+    #[test]
+    fn toc_lists_every_heading_with_anchor_links() {
+        let html = render(":::toc\n:::\n\n# First\n\n## Second\n\n### Third");
+        assert!(html.contains("<alt-toc>"), "toc wrapper missing: {html}");
+        assert!(html.contains("<nav class=\"alt-toc\""), "{html}");
+        assert!(
+            html.contains("<li class=\"alt-toc-l1\"><a href=\"#first\">First</a></li>"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<li class=\"alt-toc-l2\"><a href=\"#second\">Second</a></li>"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<li class=\"alt-toc-l3\"><a href=\"#third\">Third</a></li>"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn toc_escapes_heading_text() {
+        // A heading containing markup characters must not leak a tag into the nav.
+        let html = render(":::toc\n:::\n\n# <script>alert(1)</script>");
+        assert!(!html.contains("<script"), "toc leaked a tag: {html}");
     }
 
     #[test]
@@ -520,13 +675,19 @@ mod tests {
         // A tight list item must not wrap its text in <p>, so a checkbox or
         // bullet sits on the same line as the text.
         let html = render("- one\n- two");
-        assert!(html.contains("<li>one</li>"), "tight item wrapped in <p>: {html}");
+        assert!(
+            html.contains("<li>one</li>"),
+            "tight item wrapped in <p>: {html}"
+        );
     }
 
     #[test]
     fn loose_lists_keep_the_paragraph_wrapper() {
         let html = render("- one\n\n- two");
-        assert!(html.contains("<li><p>one</p>"), "loose item lost its <p>: {html}");
+        assert!(
+            html.contains("<li><p>one</p>"),
+            "loose item lost its <p>: {html}"
+        );
     }
 
     #[test]

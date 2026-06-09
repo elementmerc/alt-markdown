@@ -353,6 +353,11 @@ mod registry {
             kind: Kind::Directive,
             sandboxed: true,
         },
+        Spec {
+            name: "toc",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
     ];
 
     pub(crate) fn lookup(name: &str) -> Option<&'static Spec> {
