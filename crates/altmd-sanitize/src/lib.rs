@@ -14,7 +14,16 @@ pub use error::SanitizeError;
 /// and dangerous URL schemes.
 #[must_use]
 pub fn sanitize(html: &str) -> String {
-    ammonia::clean(html)
+    // The underlying parser strips a byte-order mark only when it leads the
+    // input, so a BOM that follows other text survives the first clean but is
+    // removed by a second, breaking idempotency. Drop NULs and BOMs up front:
+    // neither is meaningful in HTML, and a stray NUL is a classic filter-bypass
+    // trick. With them gone, cleaning is stable on its own output.
+    let normalised: String = html
+        .chars()
+        .filter(|&c| c != '\u{0}' && c != '\u{feff}')
+        .collect();
+    ammonia::clean(&normalised)
 }
 
 #[cfg(test)]
@@ -52,6 +61,15 @@ mod tests {
             !out.to_lowercase().contains("onerror"),
             "handler survived: {out}"
         );
+    }
+
+    #[test]
+    fn is_idempotent_on_bom_and_nul() {
+        // Regression: a NUL followed by a BOM left a stray BOM that a second
+        // clean removed, so the sanitiser was not idempotent on this input.
+        let once = sanitize("\u{0}\u{feff}");
+        assert_eq!(sanitize(&once), once, "not idempotent: {once:?}");
+        assert_eq!(once, "", "NUL and BOM should both be removed");
     }
 
     #[test]
