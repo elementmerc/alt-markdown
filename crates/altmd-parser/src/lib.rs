@@ -1104,7 +1104,10 @@ mod tests {
         use altmd_ast::Serializer;
         let doc = parse("see [#fig:histogram] here");
         let src = super::MarkdownSerializer::new().to_source(&doc);
-        assert!(src.contains("[#fig:histogram]"), "lost the reference: {src}");
+        assert!(
+            src.contains("[#fig:histogram]"),
+            "lost the reference: {src}"
+        );
         assert_eq!(parse(&src).blocks, doc.blocks, "round-trip changed the AST");
     }
 

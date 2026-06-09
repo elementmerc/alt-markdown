@@ -207,7 +207,9 @@ mod tests {
 
     #[test]
     fn no_policy_block_yields_none() {
-        let doc = CommonMarkParser::new().parse("# Just a heading\n").expect("parse");
+        let doc = CommonMarkParser::new()
+            .parse("# Just a heading\n")
+            .expect("parse");
         assert!(super::extract_policy(&doc).is_none());
     }
 }

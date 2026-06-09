@@ -1016,7 +1016,10 @@ mod tests {
     fn keeps_zero_width_joiner_for_emoji() {
         // The ZWJ that builds a family emoji must be preserved, not stripped.
         let html = render("\u{1F468}\u{200D}\u{1F469}");
-        assert!(html.contains('\u{200D}'), "ZWJ stripped, emoji broken: {html:?}");
+        assert!(
+            html.contains('\u{200D}'),
+            "ZWJ stripped, emoji broken: {html:?}"
+        );
     }
 
     #[test]
@@ -1115,9 +1118,18 @@ mod tests {
             "{html}"
         );
         // The bibliography lists only cited entries, in citation order.
-        assert!(html.contains("<li id=\"ref-b\">Author B. Title B. 2021.</li>"), "{html}");
-        assert!(html.contains("<li id=\"ref-a\">Author A. Title A. 2020.</li>"), "{html}");
-        assert!(!html.contains("Never cited"), "uncited entry leaked: {html}");
+        assert!(
+            html.contains("<li id=\"ref-b\">Author B. Title B. 2021.</li>"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<li id=\"ref-a\">Author A. Title A. 2020.</li>"),
+            "{html}"
+        );
+        assert!(
+            !html.contains("Never cited"),
+            "uncited entry leaked: {html}"
+        );
         let b_pos = html.find("ref-b\">Author B").expect("b in list");
         let a_pos = html.find("ref-a\">Author A").expect("a in list");
         assert!(b_pos < a_pos, "references not in citation order: {html}");
