@@ -263,6 +263,10 @@ fn serialize_inline(inline: &Inline, begin: &mut bool, in_table: bool, out: &mut
             out.push_str(&format!("[^{name}]"));
             *begin = false;
         }
+        Inline::CrossRef { target } => {
+            out.push_str(&format!("[#{target}]"));
+            *begin = false;
+        }
         _ => {}
     }
 }

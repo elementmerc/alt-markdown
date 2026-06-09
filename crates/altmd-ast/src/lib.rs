@@ -146,6 +146,14 @@ pub enum Inline {
         /// The footnote label (without the `^`).
         name: String,
     },
+    /// A cross-reference to a labelled element elsewhere in the document, written
+    /// `[#label]`. The renderer resolves it to a link whose text is the target's
+    /// auto-numbered name (for example "Figure 3") or, for a section, its heading
+    /// text. An unresolved target renders as a visible marker, never dropped.
+    CrossRef {
+        /// The target label (the text between `[#` and `]`).
+        target: String,
+    },
     /// A hyperlink.
     Link {
         /// The destination URL.

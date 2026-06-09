@@ -23,13 +23,23 @@ struct Heading {
     text: String,
 }
 
+/// A labelled, cross-referenceable target collected in the pre-pass: the anchor
+/// a `[#label]` reference links to, and the text it displays (a section's heading
+/// text, or an auto-numbered name such as "Figure 3").
+struct Label {
+    anchor: String,
+    text: String,
+}
+
 /// Render state threaded through the block walk: the headings collected in a
-/// pre-pass, and a cursor that advances in lockstep with the headings the
-/// renderer emits. The pre-pass and the render walk traverse blocks in the same
-/// order, so the cursor always names the heading currently being rendered.
+/// pre-pass, a cursor that advances in lockstep with the headings the renderer
+/// emits, and the label table every cross-reference resolves against. The
+/// pre-pass and the render walk traverse blocks in the same order, so the cursor
+/// always names the heading currently being rendered.
 struct RenderState {
     headings: Vec<Heading>,
     cursor: usize,
+    labels: HashMap<String, Label>,
 }
 
 /// Render a [`Document`] to an HTML string.
@@ -38,9 +48,23 @@ pub fn render_document(document: &Document) -> String {
     let mut headings = Vec::new();
     let mut seen = HashMap::new();
     collect_headings(&document.blocks, &mut headings, &mut seen);
+    // Build the cross-reference table. Sections are referenced by their anchor
+    // slug and display their heading text; numbered targets (figures, tables)
+    // are added by their own pre-passes.
+    let mut labels = HashMap::new();
+    for heading in &headings {
+        labels.insert(
+            heading.slug.clone(),
+            Label {
+                anchor: heading.slug.clone(),
+                text: heading.text.clone(),
+            },
+        );
+    }
     let mut state = RenderState {
         headings,
         cursor: 0,
+        labels,
     };
     let mut out = String::new();
     render_blocks(&document.blocks, &mut state, &mut out);
@@ -128,7 +152,7 @@ fn render_blocks(blocks: &[Block], state: &mut RenderState, out: &mut String) {
 fn render_item_blocks(blocks: &[Block], tight: bool, state: &mut RenderState, out: &mut String) {
     for block in blocks {
         match block {
-            Block::Paragraph(content) if tight => render_inlines(content, out),
+            Block::Paragraph(content) if tight => render_inlines(content, state, out),
             _ => render_block(block, state, out),
         }
     }
@@ -144,12 +168,12 @@ fn render_block(block: &Block, state: &mut RenderState, out: &mut String) {
                 Some(slug) => out.push_str(&format!("<h{level} id=\"{}\">", escape_attr(&slug))),
                 None => out.push_str(&format!("<h{level}>")),
             }
-            render_inlines(content, out);
+            render_inlines(content, state, out);
             out.push_str(&format!("</h{level}>\n"));
         }
         Block::Paragraph(content) => {
             out.push_str("<p>");
-            render_inlines(content, out);
+            render_inlines(content, state, out);
             out.push_str("</p>\n");
         }
         Block::BlockQuote(blocks) => {
@@ -195,7 +219,7 @@ fn render_block(block: &Block, state: &mut RenderState, out: &mut String) {
             out.push_str("</code></pre>\n");
         }
         Block::ThematicBreak => out.push_str("<hr />\n"),
-        Block::Table(table) => render_table(table, out),
+        Block::Table(table) => render_table(table, state, out),
         Block::FootnoteDefinition { name, blocks } => {
             out.push_str(&format!(
                 "<section class=\"footnote\" id=\"fn-{}\">\n",
@@ -210,7 +234,7 @@ fn render_block(block: &Block, state: &mut RenderState, out: &mut String) {
     }
 }
 
-fn render_table(table: &altmd_ast::Table, out: &mut String) {
+fn render_table(table: &altmd_ast::Table, state: &mut RenderState, out: &mut String) {
     use altmd_ast::Alignment;
     let style = |col: usize| match table.alignments.get(col) {
         Some(Alignment::Left) => " style=\"text-align:left\"",
@@ -221,7 +245,7 @@ fn render_table(table: &altmd_ast::Table, out: &mut String) {
     out.push_str("<table>\n<thead>\n<tr>\n");
     for (col, cell) in table.header.iter().enumerate() {
         out.push_str(&format!("<th{}>", style(col)));
-        render_inlines(cell, out);
+        render_inlines(cell, state, out);
         out.push_str("</th>\n");
     }
     out.push_str("</tr>\n</thead>\n");
@@ -231,7 +255,7 @@ fn render_table(table: &altmd_ast::Table, out: &mut String) {
             out.push_str("<tr>\n");
             for (col, cell) in row.iter().enumerate() {
                 out.push_str(&format!("<td{}>", style(col)));
-                render_inlines(cell, out);
+                render_inlines(cell, state, out);
                 out.push_str("</td>\n");
             }
             out.push_str("</tr>\n");
@@ -430,30 +454,31 @@ fn render_attrs(attrs: &Attrs, out: &mut String) {
     }
 }
 
-fn render_inlines(inlines: &[Inline], out: &mut String) {
+fn render_inlines(inlines: &[Inline], state: &mut RenderState, out: &mut String) {
     for inline in inlines {
-        render_inline(inline, out);
+        render_inline(inline, state, out);
     }
 }
 
-fn render_inline(inline: &Inline, out: &mut String) {
+fn render_inline(inline: &Inline, state: &mut RenderState, out: &mut String) {
     match inline {
         Inline::Text(text) => out.push_str(&escape_html(text)),
         Inline::Emphasis(content) => {
             out.push_str("<em>");
-            render_inlines(content, out);
+            render_inlines(content, state, out);
             out.push_str("</em>");
         }
         Inline::Strong(content) => {
             out.push_str("<strong>");
-            render_inlines(content, out);
+            render_inlines(content, state, out);
             out.push_str("</strong>");
         }
         Inline::Strikethrough(content) => {
             out.push_str("<del>");
-            render_inlines(content, out);
+            render_inlines(content, state, out);
             out.push_str("</del>");
         }
+        Inline::CrossRef { target } => render_crossref(target, state, out),
         Inline::FootnoteReference { name } => {
             out.push_str(&format!(
                 "<sup class=\"footnote-ref\"><a href=\"#fn-{}\">{}</a></sup>",
@@ -476,7 +501,7 @@ fn render_inline(inline: &Inline, out: &mut String) {
                 out.push_str(&format!(" title=\"{}\"", escape_attr(title)));
             }
             out.push('>');
-            render_inlines(content, out);
+            render_inlines(content, state, out);
             out.push_str("</a>");
         }
         Inline::Image { url, title, alt } => {
@@ -497,6 +522,21 @@ fn render_inline(inline: &Inline, out: &mut String) {
     }
 }
 
+/// Resolve a `[#label]` cross-reference. A known target becomes a link showing
+/// the target's name; an unknown one renders as the literal text it was written
+/// as, so plain CommonMark output is unchanged and `altmd check` reports the
+/// dangling reference instead.
+fn render_crossref(target: &str, state: &RenderState, out: &mut String) {
+    match state.labels.get(target) {
+        Some(label) => out.push_str(&format!(
+            "<a class=\"alt-xref\" href=\"#{}\">{}</a>",
+            escape_attr(&label.anchor),
+            escape_html(&label.text)
+        )),
+        None => out.push_str(&escape_html(&format!("[#{target}]"))),
+    }
+}
+
 /// Collect the plain text of an inline sequence (for image alt text).
 fn inline_text(inlines: &[Inline]) -> String {
     let mut text = String::new();
@@ -508,6 +548,7 @@ fn inline_text(inlines: &[Inline]) -> String {
             }
             Inline::Link { content, .. } => text.push_str(&inline_text(content)),
             Inline::Image { alt, .. } => text.push_str(&inline_text(alt)),
+            Inline::CrossRef { target } => text.push_str(target),
             Inline::SoftBreak | Inline::HardBreak => text.push(' '),
             _ => {}
         }
@@ -777,6 +818,35 @@ mod tests {
         let html = render("# 日本語\n\n## café");
         assert!(html.contains("id=\"日本語\""), "{html}");
         assert!(html.contains("id=\"café\""), "{html}");
+    }
+
+    #[test]
+    fn cross_reference_to_a_heading_resolves() {
+        let html = render("# Introduction\n\nback to [#introduction] please");
+        assert!(
+            html.contains("<a class=\"alt-xref\" href=\"#introduction\">Introduction</a>"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn cross_reference_resolves_forward() {
+        // A reference before its target still resolves, because the label table
+        // is built in a pre-pass over the whole document.
+        let html = render("jump to [#target] first\n\n# Target");
+        assert!(
+            html.contains("<a class=\"alt-xref\" href=\"#target\">Target</a>"),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn unresolved_cross_reference_stays_literal_text() {
+        // An unknown target renders as the literal text it was written as, so
+        // plain CommonMark output is unchanged and nothing is silently dropped.
+        let html = render("see [#nope] here");
+        assert!(html.contains("[#nope]"), "literal text lost: {html}");
+        assert!(!html.contains("alt-xref"), "should not be a link: {html}");
     }
 
     #[test]
