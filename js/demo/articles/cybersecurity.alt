@@ -8,6 +8,11 @@ Everything in the red and amber boxes below is a genuine attack string. It is sh
 
 This piece is a working proof. Each section drops a fresh payload into a different component, a chart label, a table cell, a callout, a link, and then shows you that the page is still standing. The format treats every byte you write as *content* until you explicitly ask for more. That single rule, applied without exception, is most of what defeats XSS.
 
+:::ai-policy{model=any default=read-only}
+- Your hardening checklist: editable
+- A timeline of notable incidents: append-only
+:::
+
 :::toc
 :::
 

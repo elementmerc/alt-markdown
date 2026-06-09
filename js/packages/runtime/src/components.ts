@@ -6,7 +6,9 @@
 // host DOM. The remaining components are enhanced markers in this phase; chart,
 // math, and rich diagrams gain their libraries (lazy-loaded) as a follow-up.
 
-import { renderChart, renderDiagram, renderMath } from "./graphics";
+import type UPlot from "uplot";
+
+import { CHART_HEIGHT, renderChart, renderDiagram, renderMath } from "./graphics";
 import { createSandboxedFrame } from "./sandbox";
 
 /** The component names that get an `alt-<name>` custom element. */
@@ -79,9 +81,51 @@ class TabsElement extends AltElement {
 
 /** Chart: render an interactive uPlot chart from the fallback data table. */
 class ChartElement extends AltElement {
+  #chart: UPlot | null = null;
+  #observer: ResizeObserver | null = null;
+
   protected override enhance(): void {
     // Lazy-loaded; a failure leaves the accessible fallback table in place.
-    void renderChart(this).catch(() => {});
+    void renderChart(this)
+      .then((chart) => {
+        // The element may have been unmounted (a re-render) before the chart
+        // resolved; if so, discard it rather than leak a detached canvas.
+        if (!chart || !this.isConnected) {
+          chart?.destroy();
+          return;
+        }
+        this.#chart = chart;
+        this.#observeWidth(chart);
+      })
+      .catch(() => {});
+  }
+
+  /**
+   * Reflow the chart to the container width whenever it changes, so a split or
+   * resized pane never leaves a fixed-width canvas spilling past its column.
+   * uPlot draws to a pixel canvas with no intrinsic responsiveness, so the width
+   * has to be pushed in explicitly.
+   */
+  #observeWidth(chart: UPlot): void {
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+    let lastWidth = this.clientWidth;
+    this.#observer = new ResizeObserver(() => {
+      const width = this.clientWidth;
+      if (width > 0 && width !== lastWidth) {
+        lastWidth = width;
+        chart.setSize({ width, height: CHART_HEIGHT });
+      }
+    });
+    this.#observer.observe(this);
+  }
+
+  disconnectedCallback(): void {
+    this.#observer?.disconnect();
+    this.#observer = null;
+    this.#chart?.destroy();
+    this.#chart = null;
   }
 }
 

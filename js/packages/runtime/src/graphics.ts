@@ -7,7 +7,12 @@
 // pure progressive enhancement: with no runtime the fallback is what shows, and
 // with the runtime the fallback becomes the rich, accessible source of truth.
 
+import type UPlot from "uplot";
+
 import { createSandboxedFrame } from "./sandbox";
+
+/** The fixed plot height, in pixels. Width tracks the container; see ChartElement. */
+export const CHART_HEIGHT = 320;
 
 interface ChartData {
   labels: string[];
@@ -35,11 +40,15 @@ function readTableData(host: HTMLElement): ChartData | null {
 
 const PALETTE = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed"];
 
-/** Render a chart into `host` from its fallback table, via uPlot (lazy-loaded). */
-export async function renderChart(host: HTMLElement): Promise<void> {
+/**
+ * Render a chart into `host` from its fallback table, via uPlot (lazy-loaded).
+ * Returns the live uPlot instance so the caller can resize or destroy it, or
+ * null when there is no chart data to draw.
+ */
+export async function renderChart(host: HTMLElement): Promise<UPlot | null> {
   const data = readTableData(host);
   if (!data) {
-    return;
+    return null;
   }
   const { default: uPlot } = await import("uplot");
   const kind = host.getAttribute("data-kind") ?? "line";
@@ -60,7 +69,7 @@ export async function renderChart(host: HTMLElement): Promise<void> {
 
   const opts: import("uplot").Options = {
     width: host.clientWidth || 640,
-    height: 320,
+    height: CHART_HEIGHT,
     scales: { x: { time: false } },
     // A crosshair cursor that highlights the nearest series, and drag to zoom the
     // x-axis (double-click resets). The legend below the chart tracks the value
@@ -87,10 +96,11 @@ export async function renderChart(host: HTMLElement): Promise<void> {
   const canvas = document.createElement("div");
   canvas.className = "alt-chart-canvas";
   host.prepend(canvas);
-  new uPlot(opts, aligned as never, canvas);
+  const chart = new uPlot(opts, aligned as never, canvas);
   // Keep the data table in the DOM for accessibility, but hide it visually now
   // that the chart is the primary representation.
   fallbackTable?.classList.add("alt-visually-hidden");
+  return chart;
 }
 
 /** Render a maths expression into `host` from its fallback, via KaTeX (lazy). */
