@@ -13,6 +13,10 @@ the meaning of the page, run anything, or scramble the layout outside its own
 little box. That is the whole test.
 :::
 
+:::ai-policy{model=any default=read-only}
+- The honest conclusion: append-only
+:::
+
 :::toc
 :::
 

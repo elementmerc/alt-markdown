@@ -22,6 +22,11 @@ const STARTER = `# Welcome to alt-markdown
 Type on the left; it renders live on the right. This is ordinary markdown, plus a
 small set of **components** that light up with no build step and no server.
 
+:::ai-policy{model=any default=editable}
+- Welcome to alt-markdown: read-only
+- A figure you can cross-reference: read-only
+:::
+
 :::callout{type=tip}
 It is all one safe text file. Switch the runtime off and it still reads as markdown.
 :::
@@ -50,6 +55,13 @@ thariq2026: Shihipar, T. The Unreasonable Effectiveness of HTML. 2026.
 
 :::references
 :::
+
+## How AI agents read this
+
+The \`:::ai-policy\` block near the top is an \`[alt.ai]\` policy. It renders to
+nothing; it is metadata telling an AI collaborator which sections it may rewrite.
+Here the title and the figure are read-only, everything else is open. The document
+carries its own collaboration rules.
 `;
 
 // UTF-8 safe base64, so a document with any script survives the round trip into

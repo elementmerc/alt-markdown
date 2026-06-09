@@ -6,6 +6,11 @@ There is a strange idea abroad that in every subject the ancient books should be
 This essay first appeared in 1944 as the introduction to a translation of Athanasius. The argument it makes about books turns out to be an argument about formats too: what survives is what stays readable.
 :::
 
+:::ai-policy{model=any default=read-only}
+- For the curious: editable
+- What survives: append-only
+:::
+
 :::toc
 :::
 
