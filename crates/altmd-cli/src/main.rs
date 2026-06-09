@@ -57,6 +57,25 @@ enum Command {
         /// Path to the source file.
         file: PathBuf,
     },
+    /// Read the document's AI edit policy (the `:::ai-policy` block). With no
+    /// `--section`, prints the policy as JSON. With `--section`, prints that
+    /// section's permission and exits 0 if it is writable, non-zero if read-only.
+    Policy {
+        /// Path to the source file.
+        file: PathBuf,
+        /// A section to check, named by its heading text or its anchor slug.
+        #[arg(long)]
+        section: Option<String>,
+    },
+}
+
+/// The permission word a host or script reads from `altmd policy --section`.
+fn permission_word(permission: altmd_core::Permission) -> &'static str {
+    match permission {
+        altmd_core::Permission::ReadOnly => "read-only",
+        altmd_core::Permission::Editable => "editable",
+        altmd_core::Permission::AppendOnly => "append-only",
+    }
 }
 
 fn read(file: &Path) -> Result<String> {
@@ -201,6 +220,34 @@ fn main() -> Result<()> {
                     Ok(())
                 }
                 Err(error) => anyhow::bail!("invalid include in {}: {error:#}", file.display()),
+            }
+        }
+        Command::Policy { file, section } => {
+            let source = read(&file)?;
+            let document = altmd_core::parse(&source)
+                .with_context(|| format!("parsing {}", file.display()))?;
+            let policy = altmd_core::extract_policy(&document);
+            match section {
+                Some(section) => {
+                    let slug = altmd_core::slug(&section);
+                    // With no policy block, nothing is restricted, so a section is
+                    // editable by default.
+                    let permission = policy
+                        .as_ref()
+                        .map_or(altmd_core::Permission::Editable, |p| p.permission(&slug));
+                    println!("{}", permission_word(permission));
+                    if permission.is_writable() {
+                        Ok(())
+                    } else {
+                        std::process::exit(2)
+                    }
+                }
+                None => {
+                    let json = serde_json::to_string_pretty(&policy)
+                        .context("serialising the policy to JSON")?;
+                    println!("{json}");
+                    Ok(())
+                }
             }
         }
     }

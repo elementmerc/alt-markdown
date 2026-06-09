@@ -34,3 +34,17 @@ pub fn render(source: &str) -> Result<String, wasm_bindgen::JsError> {
 pub fn normalise(source: &str) -> Result<String, wasm_bindgen::JsError> {
     altmd_core::normalise(source).map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))
 }
+
+/// Read the document's AI edit policy (the `:::ai-policy` block) as a JSON string,
+/// or `null` when the document carries none. A browser host reads this to learn
+/// which sections an AI agent may edit. Exposed to JavaScript as `policy`.
+///
+/// # Errors
+/// Returns a JavaScript error if the source cannot be parsed.
+#[wasm_bindgen]
+pub fn policy(source: &str) -> Result<String, wasm_bindgen::JsError> {
+    let document =
+        altmd_core::parse(source).map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))?;
+    let policy = altmd_core::extract_policy(&document);
+    serde_json::to_string(&policy).map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))
+}

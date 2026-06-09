@@ -579,6 +579,11 @@ mod registry {
             kind: Kind::Directive,
             sandboxed: false,
         },
+        Spec {
+            name: "ai-policy",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
     ];
 
     pub(crate) fn lookup(name: &str) -> Option<&'static Spec> {

@@ -223,7 +223,7 @@ fn parse_bib_entries(raw: &str, into: &mut HashMap<String, String>) {
 
 /// Reduce heading text to a URL-friendly anchor slug: lowercase, alphanumerics
 /// kept, every run of other characters collapsed to a single hyphen.
-fn slugify(text: &str) -> String {
+pub(crate) fn slugify(text: &str) -> String {
     let mut slug = String::new();
     let mut pending_hyphen = false;
     for ch in text.chars() {
@@ -398,6 +398,11 @@ fn render_component(component: &Component, state: &mut RenderState, out: &mut St
     // A bib fence is bibliography data consumed by the pre-pass; it has no visible
     // output of its own (the formatted list is rendered by :::references).
     if component.name == "bib" {
+        return;
+    }
+    // An ai-policy block is machine-readable metadata (which sections an AI agent
+    // may edit). It produces no visible output; a host reads it via the policy API.
+    if component.name == "ai-policy" {
         return;
     }
     let tag = format!("alt-{}", component.name);

@@ -13,6 +13,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 altmd-core.workspace = true
+serde_json.workspace = true
 wasm-bindgen.workspace = true
 
 [lints]

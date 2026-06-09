@@ -7,9 +7,11 @@
 //! this same API.
 
 pub mod error;
+pub mod policy;
 pub mod render;
 
 pub use error::CoreError;
+pub use policy::{AiPolicy, Permission, extract_policy};
 pub use render::render_document;
 
 // One facade: downstream crates depend on these re-exports, not the sub-crates.
@@ -38,6 +40,14 @@ pub fn to_html(source: &str) -> String {
 #[must_use]
 pub fn to_commonmark_html(source: &str) -> String {
     altmd_parser::render_html_unsafe(source)
+}
+
+/// Reduce a heading's text to the anchor slug the renderer assigns it. Useful for
+/// a host (or the `altmd policy` command) that needs to address a section the same
+/// way the document does, whether the caller has the heading text or the slug.
+#[must_use]
+pub fn slug(text: &str) -> String {
+    render::slugify(text)
 }
 
 /// Parse alt-markdown `source` into a [`Document`].

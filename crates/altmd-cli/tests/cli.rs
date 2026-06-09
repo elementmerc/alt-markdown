@@ -218,6 +218,37 @@ fn include_detects_a_cycle() -> TestResult {
 }
 
 #[test]
+fn policy_prints_json_and_guards_sections() -> TestResult {
+    let file = temp(
+        "policy",
+        ":::ai-policy{model=any}\n- Introduction: read-only\n- Draft: editable\n:::\n\n# Introduction\n\nx\n",
+    )?;
+
+    // The whole policy as JSON.
+    let json = bin().arg("policy").arg(&file).output()?;
+    assert!(json.status.success());
+    let text = String::from_utf8_lossy(&json.stdout);
+    assert!(text.contains("\"introduction\": \"read-only\""), "{text}");
+
+    // A read-only section exits non-zero (the guard a host calls).
+    let locked = bin()
+        .args(["policy", "--section", "Introduction"])
+        .arg(&file)
+        .output()?;
+    assert!(!locked.status.success(), "read-only section must fail");
+    assert!(String::from_utf8_lossy(&locked.stdout).contains("read-only"));
+
+    // An editable section exits zero.
+    let open = bin()
+        .args(["policy", "--section", "Draft"])
+        .arg(&file)
+        .output()?;
+    assert!(open.status.success(), "editable section must pass");
+    assert!(String::from_utf8_lossy(&open.stdout).contains("editable"));
+    Ok(())
+}
+
+#[test]
 fn spec_version_prints_the_version() -> TestResult {
     let out = bin().arg("--spec-version").output()?;
     assert!(out.status.success());
