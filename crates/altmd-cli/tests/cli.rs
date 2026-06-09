@@ -160,30 +160,56 @@ fn include_resolves_from_a_subdirectory() -> TestResult {
 
 #[test]
 fn include_rejects_path_traversal() -> TestResult {
+    // A real file that exists but sits outside the document's directory: the
+    // document is in project/, the secret is its sibling. `..` reaches a file
+    // that exists on every platform, so the rejection comes from the jail check,
+    // not from the file simply being absent.
     let dir = temp_tree(
         "traversal",
-        &[(
-            "doc.alt",
-            "# X\n\n:::include{src=\"../../../../etc/hostname\"}\n:::\n",
-        )],
+        &[
+            (
+                "project/doc.alt",
+                "# X\n\n:::include{src=\"../secret.txt\"}\n:::\n",
+            ),
+            ("secret.txt", "TOP SECRET, outside the project\n"),
+        ],
     )?;
-    let out = bin().arg("render").arg(dir.join("doc.alt")).output()?;
-    assert!(!out.status.success(), "path traversal must fail");
+    let out = bin()
+        .arg("render")
+        .arg(dir.join("project/doc.alt"))
+        .output()?;
+    assert!(
+        !out.status.success(),
+        "escaping the document directory must fail"
+    );
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         stderr.contains("escapes the document directory"),
         "{stderr}"
+    );
+    // The escaped file's contents must never reach the output.
+    assert!(
+        !String::from_utf8_lossy(&out.stdout).contains("TOP SECRET"),
+        "the escaped file leaked into the output"
     );
     Ok(())
 }
 
 #[test]
 fn include_rejects_an_absolute_path() -> TestResult {
-    let dir = temp_tree(
-        "absolute",
-        &[("doc.alt", "# X\n\n:::include{src=\"/etc/hostname\"}\n:::\n")],
+    // Build a path that is genuinely absolute on the running platform (a leading
+    // slash is not absolute on Windows, which needs a drive prefix), so the
+    // absolute-path guard is what rejects it.
+    let dir = std::env::temp_dir().join("altmd-inc-absolute");
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir)?;
+    let target = std::env::temp_dir().join("altmd-abs-target.alt");
+    let doc = dir.join("doc.alt");
+    fs::write(
+        &doc,
+        format!("# X\n\n:::include{{src=\"{}\"}}\n:::\n", target.display()),
     )?;
-    let out = bin().arg("render").arg(dir.join("doc.alt")).output()?;
+    let out = bin().arg("render").arg(&doc).output()?;
     assert!(!out.status.success(), "absolute path must fail");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("must be relative"), "{stderr}");
