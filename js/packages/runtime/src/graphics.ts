@@ -48,13 +48,27 @@ export async function renderChart(host: HTMLElement): Promise<void> {
     number | null
   >[];
 
+  // Read the page's own text colour so axis labels stay legible on any theme
+  // (uPlot's default ink is near-black, which disappears on a dark background).
+  const ink = getComputedStyle(host).color || "#1a1a2e";
+  const grid = "rgba(128, 128, 128, 0.18)";
+  const axisStyle = {
+    stroke: ink,
+    grid: { stroke: grid, width: 1 },
+    ticks: { stroke: grid, width: 1 },
+  };
+
   const opts: import("uplot").Options = {
     width: host.clientWidth || 640,
     height: 320,
     scales: { x: { time: false } },
+    // A crosshair cursor that highlights the nearest series, and drag to zoom the
+    // x-axis (double-click resets). The legend below the chart tracks the value
+    // under the cursor.
+    cursor: { drag: { x: true, y: false }, focus: { prox: 30 } },
     axes: [
-      { values: (_self, splits) => splits.map((i) => data.labels[i] ?? "") },
-      {},
+      { ...axisStyle, values: (_self, splits) => splits.map((i) => data.labels[i] ?? "") },
+      { ...axisStyle },
     ],
     series: [
       {},
@@ -62,7 +76,7 @@ export async function renderChart(host: HTMLElement): Promise<void> {
         const colour = PALETTE[i % PALETTE.length];
         return kind === "bar"
           ? { label: s.name, stroke: colour, fill: colour, paths: uPlot.paths.bars?.({ size: [0.6] }) }
-          : { label: s.name, stroke: colour, width: 2 };
+          : { label: s.name, stroke: colour, width: 2, points: { show: true } };
       }),
     ],
   };

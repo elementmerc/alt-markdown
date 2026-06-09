@@ -6,6 +6,53 @@
   --line: #e4e4ef;
   --accent: #4f46e5;
   --bg: #fbfbfe;
+  --code-bg: #1a1a2e;
+  --surface: #f3f3fb;
+  --surface-card: #ffffff;
+  --code-inline-bg: #f0f0f8;
+  --callout-note-bg: #eef2ff;
+  --callout-warning-bg: #fff7ed;
+  --callout-danger-bg: #fef2f2;
+  --callout-success-bg: #f0fdf4;
+  --iframe-bg: #ffffff;
+}
+
+/* Notion-style warm dark grey, automatic on a dark OS, forceable with
+   <html data-theme="dark">. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #e6e6e4;
+    --muted: #9b9a97;
+    --line: #373737;
+    --accent: #6aa3da;
+    --bg: #191919;
+    --code-bg: #111111;
+    --surface: #242424;
+    --surface-card: #202020;
+    --code-inline-bg: #2c2c2c;
+    --callout-note-bg: #1c2530;
+    --callout-warning-bg: #2a2117;
+    --callout-danger-bg: #2a1b1b;
+    --callout-success-bg: #1a261c;
+    --iframe-bg: #f7f7f5;
+  }
+}
+
+:root[data-theme="dark"] {
+  --ink: #e6e6e4;
+  --muted: #9b9a97;
+  --line: #373737;
+  --accent: #6aa3da;
+  --bg: #191919;
+  --code-bg: #111111;
+  --surface: #242424;
+  --surface-card: #202020;
+  --code-inline-bg: #2c2c2c;
+  --callout-note-bg: #1c2530;
+  --callout-warning-bg: #2a2117;
+  --callout-danger-bg: #2a1b1b;
+  --callout-success-bg: #1a261c;
+  --iframe-bg: #f7f7f5;
 }
 
 * {
@@ -49,13 +96,13 @@ a {
 code {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
   font-size: 0.9em;
-  background: #f0f0f8;
+  background: var(--code-inline-bg);
   padding: 0.1em 0.35em;
   border-radius: 4px;
 }
 
 pre {
-  background: #1a1a2e;
+  background: var(--code-bg);
   color: #e8e8f5;
   padding: 1rem 1.25rem;
   border-radius: 10px;
@@ -93,7 +140,7 @@ td {
 }
 
 th {
-  background: #f3f3fb;
+  background: var(--surface);
 }
 
 /* Components ------------------------------------------------------------- */
@@ -103,7 +150,7 @@ th {
   padding: 1rem 1.25rem;
   border-radius: 10px;
   border-left: 5px solid var(--muted);
-  background: #f3f3fb;
+  background: var(--surface);
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 0.97rem;
 }
@@ -117,20 +164,20 @@ th {
 
 .alt-callout-warning {
   border-left-color: #d97706;
-  background: #fff7ed;
+  background: var(--callout-warning-bg);
 }
 .alt-callout-danger {
   border-left-color: #dc2626;
-  background: #fef2f2;
+  background: var(--callout-danger-bg);
 }
 .alt-callout-note,
 .alt-callout-info {
   border-left-color: var(--accent);
-  background: #eef2ff;
+  background: var(--callout-note-bg);
 }
 .alt-callout-success {
   border-left-color: #16a34a;
-  background: #f0fdf4;
+  background: var(--callout-success-bg);
 }
 
 .alt-tablist {
@@ -168,7 +215,7 @@ alt-accordion details {
   border-radius: 8px;
   padding: 0.5rem 1rem;
   margin: 1rem 0;
-  background: #fff;
+  background: var(--surface-card);
 }
 
 alt-accordion summary {
@@ -190,7 +237,11 @@ alt-accordion summary {
 alt-diagram iframe {
   display: block;
   margin: 1.5rem auto;
-  background: #fff;
+  /* Diagrams render in Mermaid's light theme (dark ink), so the backing stays
+     light in dark mode too, presented as a rounded card. */
+  background: var(--iframe-bg);
+  border-radius: 10px;
+  max-width: 100%;
 }
 
 ul.contains-task-list,
@@ -220,7 +271,7 @@ li.task-list-item {
   border-radius: 12px;
   padding: 1.25rem 1.5rem;
   margin: 1rem 0;
-  background: #fff;
+  background: var(--surface-card);
   transition: border-color 0.15s, transform 0.15s;
 }
 
@@ -251,4 +302,26 @@ li.task-list-item {
 .doc-error {
   color: #dc2626;
   font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Scroll-reveal: heavier blocks fade and rise in as they enter view. The
+   runtime adds .altmd-reveal, then .altmd-revealed once on screen. */
+.altmd-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.55s ease, transform 0.55s ease;
+  will-change: opacity, transform;
+}
+
+.altmd-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .altmd-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
 }
