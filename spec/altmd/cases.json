@@ -1,0 +1,77 @@
+[
+  {
+    "name": "heading-anchor",
+    "input": "# Hello World\n",
+    "contains": ["<h1 id=\"hello-world\">Hello World</h1>"]
+  },
+  {
+    "name": "callout",
+    "input": ":::callout{type=warning}\nHeads up.\n:::\n",
+    "contains": ["<alt-callout data-type=\"warning\">", "alt-callout-warning"]
+  },
+  {
+    "name": "tabs",
+    "input": "::::tabs\n:::tab{title=\"A\"}\nalpha\n:::\n::::\n",
+    "contains": ["<alt-tabs>", "<section class=\"alt-tab\"><h3>A</h3>", "alpha"]
+  },
+  {
+    "name": "accordion",
+    "input": ":::accordion{title=\"More\"}\nbody\n:::\n",
+    "contains": ["<details><summary>More</summary>", "body"]
+  },
+  {
+    "name": "chart",
+    "input": "```chart kind=bar\nx,y\na,1\n```\n",
+    "contains": ["<alt-chart data-kind=\"bar\">", "<th>x</th>", "<td>a</td>"]
+  },
+  {
+    "name": "math",
+    "input": "```math\nE=mc^2\n```\n",
+    "contains": ["<alt-math>", "E=mc^2"]
+  },
+  {
+    "name": "toc",
+    "input": ":::toc\n:::\n\n# One\n\n## Two\n",
+    "contains": ["<alt-toc>", "<nav class=\"alt-toc\"", "href=\"#one\"", "href=\"#two\""]
+  },
+  {
+    "name": "cross-reference",
+    "input": "see [#intro]\n\n# Intro\n",
+    "contains": ["<a class=\"alt-xref\" href=\"#intro\">Intro</a>"]
+  },
+  {
+    "name": "cross-reference-unresolved-is-literal",
+    "input": "see [#nope] here\n",
+    "contains": ["[#nope]"]
+  },
+  {
+    "name": "figure",
+    "input": ":::figure{#fig:a caption=\"A plot\"}\n![](a.png)\n:::\n",
+    "contains": ["<figure id=\"fig:a\">", "<span class=\"alt-figlabel\">Figure 1</span>: A plot"]
+  },
+  {
+    "name": "table-figure-numbers-separately",
+    "input": ":::figure{caption=\"f\"}\nx\n:::\n\n:::figure{kind=table caption=\"t\"}\ny\n:::\n",
+    "contains": ["Figure 1</span>: f", "Table 1</span>: t"]
+  },
+  {
+    "name": "citation",
+    "input": "as shown [@k].\n\n```bib\nk: Author. Title. 2020.\n```\n\n:::references\n:::\n",
+    "contains": ["<a class=\"alt-cite\" href=\"#ref-k\">[1]</a>", "<li id=\"ref-k\">Author. Title. 2020.</li>"]
+  },
+  {
+    "name": "footnote",
+    "input": "a[^1]\n\n[^1]: a note\n",
+    "contains": ["<sup class=\"footnote-ref\"><a href=\"#fn-1\">1</a></sup>", "id=\"fn-1\""]
+  },
+  {
+    "name": "task-list",
+    "input": "- [x] done\n- [ ] todo\n",
+    "contains": ["<input type=\"checkbox\" checked disabled /> done", "<input type=\"checkbox\" disabled /> todo"]
+  },
+  {
+    "name": "unknown-directive-fails",
+    "input": ":::nope\nx\n:::\n",
+    "error": true
+  }
+]

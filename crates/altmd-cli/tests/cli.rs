@@ -218,6 +218,15 @@ fn include_detects_a_cycle() -> TestResult {
 }
 
 #[test]
+fn spec_version_prints_the_version() -> TestResult {
+    let out = bin().arg("--spec-version").output()?;
+    assert!(out.status.success());
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(text.trim(), "1.0", "{text}");
+    Ok(())
+}
+
+#[test]
 fn check_reports_ok_and_errors() -> TestResult {
     let good = temp("check-ok", "# fine\n")?;
     let ok = bin().arg("check").arg(&good).output()?;

@@ -16,6 +16,11 @@ pub use render::render_document;
 pub use altmd_ast::{
     Attrs, Block, Component, ComponentBody, Document, Inline, List, Parser, Serializer, Span,
 };
+
+/// The frozen grammar spec version this implementation conforms to. The grammar
+/// is additive within a major version: a 1.x reader accepts every 1.0 document
+/// unchanged, so a document that is valid today stays valid. See `docs/spec.md`.
+pub const SPEC_VERSION: &str = "1.0";
 pub use altmd_parser::{CommonMarkParser, MarkdownSerializer};
 
 /// Render alt-markdown `source` to safe HTML: full CommonMark rendering with raw

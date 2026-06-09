@@ -12,8 +12,12 @@ use clap::{Parser, Subcommand};
 #[derive(Parser)]
 #[command(name = "altmd", version, about)]
 struct Cli {
+    /// Print the alt-markdown grammar spec version this build conforms to, and
+    /// exit.
+    #[arg(long)]
+    spec_version: bool,
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -125,7 +129,14 @@ bootstrap();\n\
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    match cli.command {
+    if cli.spec_version {
+        println!("{}", altmd_core::SPEC_VERSION);
+        return Ok(());
+    }
+    let Some(command) = cli.command else {
+        anyhow::bail!("no command given; run `altmd --help` to see the available commands");
+    };
+    match command {
         Command::Render {
             file,
             commonmark,
