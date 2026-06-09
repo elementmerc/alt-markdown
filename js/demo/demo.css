@@ -362,3 +362,142 @@ li.task-list-item {
     transition: none;
   }
 }
+
+/* Playground ------------------------------------------------------------- */
+
+.pg-body {
+  margin: 0;
+  max-width: none;
+  padding: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+}
+
+.pg-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  flex: none;
+}
+
+.pg-brand {
+  color: var(--accent);
+}
+
+.pg-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pg-field {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.pg-controls select,
+.pg-controls button {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--ink);
+  background: var(--surface-card);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+}
+
+.pg-grid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 0;
+}
+
+.pg-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--line);
+}
+
+.pg-pane:last-child {
+  border-right: none;
+}
+
+.pg-pane-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  padding: 0.4rem 1rem 0.2rem;
+}
+
+#src {
+  flex: 1;
+  resize: none;
+  border: none;
+  outline: none;
+  padding: 0.5rem 1rem 1rem;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--bg);
+  tab-size: 2;
+}
+
+#out {
+  flex: 1;
+  overflow: auto;
+  padding: 0.5rem 1.5rem 3rem;
+  max-width: none;
+}
+
+.pg-status {
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 0 1.5rem;
+  min-height: 1.1rem;
+}
+
+.pg-status-error {
+  color: #c0392b;
+}
+
+.pg-foot {
+  flex: none;
+  font-size: 0.8rem;
+  color: var(--muted);
+  padding: 0.5rem 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.pg-embed {
+  display: inline-block;
+  background: var(--code-inline-bg);
+  padding: 0.1rem 0.4rem;
+  border-radius: 5px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 720px) {
+  .pg-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  .pg-pane {
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+}

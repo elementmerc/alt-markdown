@@ -68,16 +68,16 @@ last row is a deliberate scope choice, not a missing feature.
 
 ## See it
 
-A live gallery of three articles (a security deep dive, a literary essay, and a
-data-heavy piece) lives in [`js/demo`](js/demo). Each is a plain `.alt` file that
-tries hard to break the format, and each ships in a light and a Notion-style dark
-theme.
+**[Try it live](https://elementmerc.github.io/alt-markdown/):** type alt-markdown
+on the left, watch it render on the right, and share what you make with a link.
 
-```
-cd js && python3 -m http.server 8000   # then open http://localhost:8000/demo/
-```
+Or browse the gallery: a security deep dive, a literary essay, a data-heavy piece,
+and an adversarial-Unicode stress test. Each is a plain `.alt` file that tries hard
+to break the format, in a light and a Notion-style dark theme.
 
-Turn JavaScript off and every article still reads as ordinary markdown.
+Prefer local? `cd js && python3 -m http.server 8000`, then open
+`http://localhost:8000/demo/`. Turn JavaScript off and every article still reads as
+ordinary markdown.
 
 ## Use it from the command line
 

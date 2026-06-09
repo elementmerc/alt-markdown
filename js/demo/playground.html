@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>alt-markdown playground</title>
+
+    <!--
+      A CSP that still lets the WebAssembly core run ('wasm-unsafe-eval') and
+      keeps the page from loading external scripts. Rendered content is safe by
+      construction (sanitised, components sandboxed), and the only inline script
+      is the static import map, so 'unsafe-inline' here is a small, bounded cost.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; frame-src 'self' data:; object-src 'none'; base-uri 'none'"
+    />
+
+    <link rel="stylesheet" href="../node_modules/uplot/dist/uPlot.min.css" />
+    <link rel="stylesheet" href="../node_modules/katex/dist/katex.min.css" />
+    <link rel="stylesheet" href="./demo.css" />
+
+    <script type="importmap">
+      {
+        "imports": {
+          "uplot": "../node_modules/uplot/dist/uPlot.esm.js",
+          "katex": "../node_modules/katex/dist/katex.mjs",
+          "mermaid": "../node_modules/mermaid/dist/mermaid.esm.min.mjs"
+        }
+      }
+    </script>
+  </head>
+  <body class="pg-body">
+    <header class="pg-bar">
+      <strong class="pg-brand">alt-markdown playground</strong>
+      <span class="pg-controls">
+        <label class="pg-field">
+          Example
+          <select id="preset">
+            <option value="">Starter</option>
+            <option value="cybersecurity">Security deep dive</option>
+            <option value="cs-lewis">Literary essay</option>
+            <option value="paradox-of-genius">Data-heavy piece</option>
+            <option value="languages">Adversarial Unicode</option>
+          </select>
+        </label>
+        <button id="copy-link" type="button">Copy link</button>
+        <button id="theme" type="button" aria-label="Toggle dark mode">Theme</button>
+      </span>
+    </header>
+
+    <main class="pg-grid">
+      <section class="pg-pane">
+        <label class="pg-pane-label" for="src">Source</label>
+        <textarea id="src" spellcheck="false" autocomplete="off"></textarea>
+      </section>
+      <section class="pg-pane">
+        <label class="pg-pane-label" for="out">Preview</label>
+        <div id="status" class="pg-status" role="status"></div>
+        <main id="out" class="altmd-doc"></main>
+      </section>
+    </main>
+
+    <footer class="pg-foot">
+      Drop one tag in any HTML page and a <code>.alt</code> document renders:
+      <code class="pg-embed">&lt;script type="module"
+      src="https://cdn.jsdelivr.net/npm/@altmd/runtime@0.1.0/dist/index.js"&gt;&lt;/script&gt;</code>
+    </footer>
+
+    <script type="module" src="./playground.js"></script>
+  </body>
+</html>
