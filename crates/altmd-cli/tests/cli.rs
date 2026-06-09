@@ -60,6 +60,53 @@ fn ast_emits_json() -> TestResult {
 }
 
 #[test]
+fn render_standalone_is_self_contained() -> TestResult {
+    let file = temp(
+        "standalone",
+        "# My Spec\n\n```chart kind=bar\nx,y\na,1\n```\n\n<script>alert(1)</script>\n",
+    )?;
+    let out = bin().args(["render", "--standalone"]).arg(&file).output()?;
+    assert!(out.status.success());
+    let html = String::from_utf8_lossy(&out.stdout);
+    // A complete document with the theme and enhancement script inlined.
+    assert!(html.starts_with("<!doctype html>"), "{html}");
+    assert!(html.contains("<style>"), "theme not inlined: {html}");
+    assert!(html.contains("alt-markdown default theme"), "{html}");
+    assert!(
+        html.contains("<title>My Spec</title>"),
+        "title not derived: {html}"
+    );
+    assert!(
+        html.contains("import { bootstrap }"),
+        "enhancer missing: {html}"
+    );
+    assert!(
+        html.contains("type=\"importmap\""),
+        "import map missing: {html}"
+    );
+    // The content and its static fallback are present.
+    assert!(html.contains("<alt-chart"), "{html}");
+    assert!(
+        html.contains("<th>x</th>"),
+        "chart fallback table missing: {html}"
+    );
+    // A hostile payload in the source never becomes a live script.
+    assert!(!html.contains("<script>alert"), "payload leaked: {html}");
+    Ok(())
+}
+
+#[test]
+fn render_standalone_rejects_commonmark_combo() -> TestResult {
+    let file = temp("combo", "# x\n")?;
+    let out = bin()
+        .args(["render", "--standalone", "--commonmark"])
+        .arg(&file)
+        .output()?;
+    assert!(!out.status.success(), "combining the two flags must fail");
+    Ok(())
+}
+
+#[test]
 fn check_reports_ok_and_errors() -> TestResult {
     let good = temp("check-ok", "# fine\n")?;
     let ok = bin().arg("check").arg(&good).output()?;
