@@ -574,6 +574,11 @@ mod registry {
             kind: Kind::Directive,
             sandboxed: false,
         },
+        Spec {
+            name: "include",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
     ];
 
     pub(crate) fn lookup(name: &str) -> Option<&'static Spec> {

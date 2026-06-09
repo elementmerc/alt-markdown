@@ -1,5 +1,7 @@
 //! alt-markdown command-line tools.
 
+mod include;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -142,8 +144,11 @@ fn main() -> Result<()> {
             let html = if commonmark {
                 altmd_core::to_commonmark_html(&source)
             } else {
-                altmd_core::render(&source)
-                    .with_context(|| format!("rendering {}", file.display()))?
+                let document = altmd_core::parse(&source)
+                    .with_context(|| format!("parsing {}", file.display()))?;
+                let resolved = include::resolve_document(document, &file)
+                    .with_context(|| format!("resolving includes in {}", file.display()))?;
+                altmd_core::render_document(&resolved)
             };
             if standalone {
                 print!(
@@ -173,14 +178,18 @@ fn main() -> Result<()> {
         }
         Command::Check { file } => {
             let source = read(&file)?;
-            match altmd_core::parse(&source) {
-                Ok(document) => {
-                    println!("ok: {} top-level blocks", document.blocks.len());
+            let document = match altmd_core::parse(&source) {
+                Ok(document) => document,
+                Err(error) => anyhow::bail!("invalid document {}: {error}", file.display()),
+            };
+            // Validate the include graph as well: missing files, traversal out of
+            // the document directory, and cycles are all reported here.
+            match include::resolve_document(document, &file) {
+                Ok(resolved) => {
+                    println!("ok: {} top-level blocks", resolved.blocks.len());
                     Ok(())
                 }
-                Err(error) => {
-                    anyhow::bail!("invalid document {}: {error}", file.display())
-                }
+                Err(error) => anyhow::bail!("invalid include in {}: {error:#}", file.display()),
             }
         }
     }

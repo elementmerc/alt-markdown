@@ -18,6 +18,21 @@ fn temp(name: &str, source: &str) -> Result<PathBuf, Box<dyn std::error::Error>>
     Ok(path)
 }
 
+/// Create a fresh temp directory and write each `(relative path, contents)` into
+/// it (creating subdirectories as needed). Returns the directory path.
+fn temp_tree(name: &str, files: &[(&str, &str)]) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let dir = std::env::temp_dir().join(format!("altmd-inc-{name}"));
+    let _ = fs::remove_dir_all(&dir);
+    for (relative, contents) in files {
+        let path = dir.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, contents)?;
+    }
+    Ok(dir)
+}
+
 #[test]
 fn render_emits_component_html() -> TestResult {
     let file = temp("render", ":::callout{type=warning}\nhi\n:::\n")?;
@@ -103,6 +118,102 @@ fn render_standalone_rejects_commonmark_combo() -> TestResult {
         .arg(&file)
         .output()?;
     assert!(!out.status.success(), "combining the two flags must fail");
+    Ok(())
+}
+
+#[test]
+fn include_splices_the_referenced_file() -> TestResult {
+    let dir = temp_tree(
+        "ok",
+        &[
+            ("book.alt", "# Book\n\n:::include{src=\"ch1.alt\"}\n:::\n"),
+            ("ch1.alt", "## Chapter One\n\nHello from the chapter.\n"),
+        ],
+    )?;
+    let out = bin().arg("render").arg(dir.join("book.alt")).output()?;
+    assert!(out.status.success());
+    let html = String::from_utf8_lossy(&out.stdout);
+    assert!(html.contains("Chapter One"), "include not spliced: {html}");
+    assert!(html.contains("Hello from the chapter"), "{html}");
+    Ok(())
+}
+
+#[test]
+fn include_resolves_from_a_subdirectory() -> TestResult {
+    // A relative include inside a subdirectory resolves against that
+    // subdirectory, and the result stays inside the document's directory.
+    let dir = temp_tree(
+        "subdir",
+        &[
+            (
+                "book.alt",
+                "# Book\n\n:::include{src=\"parts/intro.alt\"}\n:::\n",
+            ),
+            ("parts/intro.alt", "Intro text.\n"),
+        ],
+    )?;
+    let out = bin().arg("render").arg(dir.join("book.alt")).output()?;
+    assert!(out.status.success());
+    assert!(String::from_utf8_lossy(&out.stdout).contains("Intro text"));
+    Ok(())
+}
+
+#[test]
+fn include_rejects_path_traversal() -> TestResult {
+    let dir = temp_tree(
+        "traversal",
+        &[(
+            "doc.alt",
+            "# X\n\n:::include{src=\"../../../../etc/hostname\"}\n:::\n",
+        )],
+    )?;
+    let out = bin().arg("render").arg(dir.join("doc.alt")).output()?;
+    assert!(!out.status.success(), "path traversal must fail");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("escapes the document directory"),
+        "{stderr}"
+    );
+    Ok(())
+}
+
+#[test]
+fn include_rejects_an_absolute_path() -> TestResult {
+    let dir = temp_tree(
+        "absolute",
+        &[("doc.alt", "# X\n\n:::include{src=\"/etc/hostname\"}\n:::\n")],
+    )?;
+    let out = bin().arg("render").arg(dir.join("doc.alt")).output()?;
+    assert!(!out.status.success(), "absolute path must fail");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("must be relative"), "{stderr}");
+    Ok(())
+}
+
+#[test]
+fn include_reports_a_missing_file() -> TestResult {
+    let dir = temp_tree(
+        "missing",
+        &[("doc.alt", "# X\n\n:::include{src=\"nope.alt\"}\n:::\n")],
+    )?;
+    let out = bin().arg("render").arg(dir.join("doc.alt")).output()?;
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("not found"));
+    Ok(())
+}
+
+#[test]
+fn include_detects_a_cycle() -> TestResult {
+    let dir = temp_tree(
+        "cycle",
+        &[
+            ("a.alt", "# A\n\n:::include{src=\"b.alt\"}\n:::\n"),
+            ("b.alt", "# B\n\n:::include{src=\"a.alt\"}\n:::\n"),
+        ],
+    )?;
+    let out = bin().arg("render").arg(dir.join("a.alt")).output()?;
+    assert!(!out.status.success(), "an include cycle must fail");
+    assert!(String::from_utf8_lossy(&out.stderr).contains("cycle"));
     Ok(())
 }
 

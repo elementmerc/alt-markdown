@@ -13,7 +13,9 @@ pub use error::CoreError;
 pub use render::render_document;
 
 // One facade: downstream crates depend on these re-exports, not the sub-crates.
-pub use altmd_ast::{Block, Document, Inline, List, Parser, Serializer, Span};
+pub use altmd_ast::{
+    Attrs, Block, Component, ComponentBody, Document, Inline, List, Parser, Serializer, Span,
+};
 pub use altmd_parser::{CommonMarkParser, MarkdownSerializer};
 
 /// Render alt-markdown `source` to safe HTML: full CommonMark rendering with raw

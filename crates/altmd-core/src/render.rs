@@ -448,6 +448,7 @@ fn render_fallback(component: &Component, state: &mut RenderState, out: &mut Str
         "embed" => fallback_embed(component, out),
         "toc" => fallback_toc(state, out),
         "references" => fallback_references(state, out),
+        "include" => fallback_include(component, out),
         _ => fallback_default(component, state, out),
     }
 }
@@ -535,6 +536,21 @@ fn fallback_math(component: &Component, out: &mut String) {
         out.push_str(&format!(
             "<code class=\"alt-math\">{}</code>",
             escape_html(raw.trim_end())
+        ));
+    }
+}
+
+/// The fallback for an unresolved `:::include`: a link to the source file. The
+/// CLI splices the included content in place before rendering, so this is what a
+/// reader sees only where there is no filesystem (the browser) or where includes
+/// were not expanded.
+fn fallback_include(component: &Component, out: &mut String) {
+    let src = component.attrs.get("src").unwrap_or("");
+    if !src.is_empty() {
+        out.push_str(&format!(
+            "<a class=\"alt-include\" href=\"{}\">{}</a>",
+            escape_attr(&safe_url(src)),
+            escape_html(src)
         ));
     }
 }
