@@ -94,7 +94,7 @@ impl Parser for CommonMarkParser {
         let footnotes = collect_footnote_defs(source);
         let mut blocks = segments_to_blocks(&segments, &footnotes)?;
         relocate_footnotes(&mut blocks);
-        recognise_crossrefs(&mut blocks);
+        recognise_references(&mut blocks);
         Ok(Document { blocks })
     }
 }
@@ -171,37 +171,38 @@ fn relocate_footnotes(blocks: &mut Vec<Block>) {
     *blocks = kept;
 }
 
-/// Rewrite `[#label]` runs inside text into [`Inline::CrossRef`] nodes. comrak
-/// leaves an unmatched shortcut reference (`[#fig:x]`) as a single literal text
-/// node, so we walk every inline position and split those runs out. Whether a
-/// reference resolves is the renderer's concern; an unresolved one renders as the
-/// literal text it came from, so plain CommonMark output is unchanged.
-fn recognise_crossrefs(blocks: &mut [Block]) {
+/// Rewrite `[#label]` and `[@key]` runs inside text into [`Inline::CrossRef`] and
+/// [`Inline::Citation`] nodes. comrak leaves an unmatched shortcut reference
+/// (`[#fig:x]`, `[@smith]`) as a single literal text node, so we walk every
+/// inline position and split those runs out. Whether a reference resolves is the
+/// renderer's concern; an unresolved one renders as the literal text it came
+/// from, so plain CommonMark output is unchanged.
+fn recognise_references(blocks: &mut [Block]) {
     for block in blocks {
         match block {
             Block::Heading { content, .. } | Block::Paragraph(content) => {
-                recognise_crossrefs_inlines(content);
+                recognise_references_inlines(content);
             }
-            Block::BlockQuote(children) => recognise_crossrefs(children),
+            Block::BlockQuote(children) => recognise_references(children),
             Block::List(list) => {
                 for item in &mut list.items {
-                    recognise_crossrefs(&mut item.blocks);
+                    recognise_references(&mut item.blocks);
                 }
             }
             Block::Table(table) => {
                 for cell in &mut table.header {
-                    recognise_crossrefs_inlines(cell);
+                    recognise_references_inlines(cell);
                 }
                 for row in &mut table.rows {
                     for cell in row {
-                        recognise_crossrefs_inlines(cell);
+                        recognise_references_inlines(cell);
                     }
                 }
             }
-            Block::FootnoteDefinition { blocks, .. } => recognise_crossrefs(blocks),
+            Block::FootnoteDefinition { blocks, .. } => recognise_references(blocks),
             Block::Component(component) => {
                 if let ComponentBody::Children(children) = &mut component.body {
-                    recognise_crossrefs(children);
+                    recognise_references(children);
                 }
             }
             _ => {}
@@ -209,23 +210,23 @@ fn recognise_crossrefs(blocks: &mut [Block]) {
     }
 }
 
-/// Split cross-references out of every text node in an inline sequence, recursing
-/// into the formatted spans that can contain text.
-fn recognise_crossrefs_inlines(inlines: &mut Vec<Inline>) {
+/// Split references out of every text node in an inline sequence, recursing into
+/// the formatted spans that can contain text.
+fn recognise_references_inlines(inlines: &mut Vec<Inline>) {
     let mut out = Vec::with_capacity(inlines.len());
     for inline in std::mem::take(inlines) {
         match inline {
-            Inline::Text(text) => out.extend(split_crossrefs(&text)),
+            Inline::Text(text) => out.extend(split_references(&text)),
             Inline::Emphasis(mut content) => {
-                recognise_crossrefs_inlines(&mut content);
+                recognise_references_inlines(&mut content);
                 out.push(Inline::Emphasis(content));
             }
             Inline::Strong(mut content) => {
-                recognise_crossrefs_inlines(&mut content);
+                recognise_references_inlines(&mut content);
                 out.push(Inline::Strong(content));
             }
             Inline::Strikethrough(mut content) => {
-                recognise_crossrefs_inlines(&mut content);
+                recognise_references_inlines(&mut content);
                 out.push(Inline::Strikethrough(content));
             }
             Inline::Link {
@@ -233,7 +234,7 @@ fn recognise_crossrefs_inlines(inlines: &mut Vec<Inline>) {
                 title,
                 mut content,
             } => {
-                recognise_crossrefs_inlines(&mut content);
+                recognise_references_inlines(&mut content);
                 out.push(Inline::Link {
                     url,
                     title,
@@ -246,21 +247,27 @@ fn recognise_crossrefs_inlines(inlines: &mut Vec<Inline>) {
     *inlines = out;
 }
 
-/// Split a text string into literal-text and [`Inline::CrossRef`] segments at each
-/// `[#label]` occurrence. A label starts with an ASCII letter and continues with
-/// ASCII alphanumerics, `:`, `_`, or `-`; anything else leaves the `[#` literal.
-fn split_crossrefs(text: &str) -> Vec<Inline> {
+/// Split a text string into literal-text, [`Inline::CrossRef`], and
+/// [`Inline::Citation`] segments at each `[#label]` or `[@key]` occurrence. A
+/// label starts with an ASCII letter and continues with ASCII alphanumerics,
+/// `:`, `_`, or `-`; anything else leaves the bracket literal.
+fn split_references(text: &str) -> Vec<Inline> {
     let bytes = text.as_bytes();
     let mut out = Vec::new();
     let mut last = 0;
     let mut i = 0;
     while i + 1 < bytes.len() {
-        if bytes[i] == b'[' && bytes[i + 1] == b'#' {
-            if let Some((label, end)) = parse_crossref_label(text, i + 2) {
+        let sigil = bytes[i + 1];
+        if bytes[i] == b'[' && (sigil == b'#' || sigil == b'@') {
+            if let Some((label, end)) = parse_reference_label(text, i + 2) {
                 if last < i {
                     out.push(Inline::Text(text[last..i].to_owned()));
                 }
-                out.push(Inline::CrossRef { target: label });
+                out.push(if sigil == b'#' {
+                    Inline::CrossRef { target: label }
+                } else {
+                    Inline::Citation { key: label }
+                });
                 last = end;
                 i = end;
                 continue;
@@ -274,9 +281,9 @@ fn split_crossrefs(text: &str) -> Vec<Inline> {
     out
 }
 
-/// Read a cross-reference label beginning at byte `start` (just past `[#`),
+/// Read a reference label beginning at byte `start` (just past `[#` or `[@`),
 /// returning the label and the byte offset just past its closing `]`.
-fn parse_crossref_label(text: &str, start: usize) -> Option<(String, usize)> {
+fn parse_reference_label(text: &str, start: usize) -> Option<(String, usize)> {
     let rest = text.get(start..)?;
     let close = rest.find(']')?;
     let label = &rest[..close];
@@ -554,6 +561,16 @@ mod registry {
         },
         Spec {
             name: "figure",
+            kind: Kind::Directive,
+            sandboxed: false,
+        },
+        Spec {
+            name: "bib",
+            kind: Kind::Fence,
+            sandboxed: false,
+        },
+        Spec {
+            name: "references",
             kind: Kind::Directive,
             sandboxed: false,
         },
@@ -1078,6 +1095,28 @@ mod tests {
         let doc = parse("see [#fig:histogram] here");
         let src = super::MarkdownSerializer::new().to_source(&doc);
         assert!(src.contains("[#fig:histogram]"), "lost the reference: {src}");
+        assert_eq!(parse(&src).blocks, doc.blocks, "round-trip changed the AST");
+    }
+
+    #[test]
+    fn recognises_and_round_trips_a_citation() {
+        use altmd_ast::Serializer;
+        let doc = parse("as shown [@smith2020] here");
+        let Some(Block::Paragraph(inlines)) = doc.blocks.first() else {
+            unreachable!("expected a paragraph")
+        };
+        assert_eq!(
+            inlines,
+            &vec![
+                Inline::Text("as shown ".into()),
+                Inline::Citation {
+                    key: "smith2020".into()
+                },
+                Inline::Text(" here".into()),
+            ]
+        );
+        let src = super::MarkdownSerializer::new().to_source(&doc);
+        assert!(src.contains("[@smith2020]"), "lost the citation: {src}");
         assert_eq!(parse(&src).blocks, doc.blocks, "round-trip changed the AST");
     }
 

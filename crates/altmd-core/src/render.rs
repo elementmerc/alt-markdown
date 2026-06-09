@@ -11,7 +11,7 @@
 //! output is safe by construction without a blanket sanitiser pass.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use altmd_ast::{Attrs, Block, Component, ComponentBody, Document, Inline};
 
@@ -44,6 +44,11 @@ struct RenderState {
     /// the same document order as the pre-pass, so a figure's rendered number
     /// matches the number stored for it in `labels`.
     fig_counters: HashMap<String, u32>,
+    /// Bibliography entries, the cited keys in order, and each cited key's number,
+    /// for resolving `[@key]` citations and rendering the `:::references` list.
+    bib: HashMap<String, String>,
+    cited: Vec<String>,
+    cite_numbers: HashMap<String, u32>,
 }
 
 /// The result of the single pre-pass over the document: the heading list (for
@@ -55,6 +60,11 @@ struct Prepass {
     labels: HashMap<String, Label>,
     seen_slugs: HashMap<String, u32>,
     fig_counters: HashMap<String, u32>,
+    /// Citation keys in first-appearance order, and the set used to dedupe them.
+    cite_order: Vec<String>,
+    cite_seen: HashSet<String>,
+    /// Bibliography entries (`key` to reference text) gathered from `bib` fences.
+    bib: HashMap<String, String>,
 }
 
 /// Render a [`Document`] to an HTML string.
@@ -62,11 +72,25 @@ struct Prepass {
 pub fn render_document(document: &Document) -> String {
     let mut pre = Prepass::default();
     collect_labels(&document.blocks, &mut pre);
+    // Number the citations that have a matching bibliography entry, in the order
+    // they first appear. A citation to an undefined key keeps no number and
+    // renders as literal text, so plain output stays unchanged.
+    let mut cited = Vec::new();
+    let mut cite_numbers = HashMap::new();
+    for key in &pre.cite_order {
+        if pre.bib.contains_key(key) {
+            cite_numbers.insert(key.clone(), cited.len() as u32 + 1);
+            cited.push(key.clone());
+        }
+    }
     let mut state = RenderState {
         headings: pre.headings,
         cursor: 0,
         labels: pre.labels,
         fig_counters: HashMap::new(),
+        bib: pre.bib,
+        cited,
+        cite_numbers,
     };
     let mut out = String::new();
     render_blocks(&document.blocks, &mut state, &mut out);
@@ -97,6 +121,23 @@ fn collect_labels(blocks: &[Block], pre: &mut Prepass) {
                     slug,
                     text,
                 });
+                scan_citations(content, pre);
+            }
+            Block::Paragraph(content) => scan_citations(content, pre),
+            Block::Table(table) => {
+                for cell in &table.header {
+                    scan_citations(cell, pre);
+                }
+                for row in &table.rows {
+                    for cell in row {
+                        scan_citations(cell, pre);
+                    }
+                }
+            }
+            Block::Component(component) if component.name == "bib" => {
+                if let ComponentBody::Raw(raw) = &component.body {
+                    parse_bib_entries(raw, &mut pre.bib);
+                }
             }
             Block::Component(component) if component.name == "figure" => {
                 let (key, prefix) = figure_kind(&component.attrs);
@@ -139,6 +180,44 @@ fn figure_kind(attrs: &Attrs) -> (&'static str, &'static str) {
         Some("table") => ("table", "Table"),
         Some("listing") => ("listing", "Listing"),
         _ => ("figure", "Figure"),
+    }
+}
+
+/// Record any `[@key]` citations in an inline sequence in first-appearance order,
+/// recursing into the formatted spans that can hold them.
+fn scan_citations(inlines: &[Inline], pre: &mut Prepass) {
+    for inline in inlines {
+        match inline {
+            Inline::Citation { key } if !pre.cite_seen.contains(key) => {
+                pre.cite_seen.insert(key.clone());
+                pre.cite_order.push(key.clone());
+            }
+            Inline::Emphasis(content)
+            | Inline::Strong(content)
+            | Inline::Strikethrough(content) => scan_citations(content, pre),
+            Inline::Link { content, .. } => scan_citations(content, pre),
+            _ => {}
+        }
+    }
+}
+
+/// Parse a `bib` fence body into `key` to reference-text entries, one per line in
+/// the form `key: reference text`. The first `: ` separates the key (which has no
+/// spaces) from the human-readable reference; the first definition of a key wins.
+fn parse_bib_entries(raw: &str, into: &mut HashMap<String, String>) {
+    for line in raw.lines() {
+        let line = line.trim();
+        if let Some((key, text)) = line.split_once(": ") {
+            let key = key.trim();
+            let valid = key.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && key
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || matches!(c, ':' | '_' | '-'));
+            if valid {
+                into.entry(key.to_owned())
+                    .or_insert_with(|| text.trim().to_owned());
+            }
+        }
     }
 }
 
@@ -316,6 +395,11 @@ fn render_component(component: &Component, state: &mut RenderState, out: &mut St
         render_figure(component, state, out);
         return;
     }
+    // A bib fence is bibliography data consumed by the pre-pass; it has no visible
+    // output of its own (the formatted list is rendered by :::references).
+    if component.name == "bib" {
+        return;
+    }
     let tag = format!("alt-{}", component.name);
     out.push('<');
     out.push_str(&tag);
@@ -363,6 +447,7 @@ fn render_fallback(component: &Component, state: &mut RenderState, out: &mut Str
         "math" => fallback_math(component, out),
         "embed" => fallback_embed(component, out),
         "toc" => fallback_toc(state, out),
+        "references" => fallback_references(state, out),
         _ => fallback_default(component, state, out),
     }
 }
@@ -391,6 +476,22 @@ fn fallback_toc(state: &RenderState, out: &mut String) {
         ));
     }
     out.push_str("</ul>\n</nav>");
+}
+
+/// Render the bibliography: an ordered list of the cited references in citation
+/// order, each anchored so a `[@key]` citation links to it. The list numbering
+/// matches the numbers the citations show.
+fn fallback_references(state: &RenderState, out: &mut String) {
+    out.push_str("<ol class=\"alt-references\">");
+    for key in &state.cited {
+        let text = state.bib.get(key).map_or("", String::as_str);
+        out.push_str(&format!(
+            "\n<li id=\"ref-{}\">{}</li>",
+            escape_attr(key),
+            escape_html(text)
+        ));
+    }
+    out.push_str("\n</ol>");
 }
 
 fn fallback_callout(component: &Component, state: &mut RenderState, out: &mut String) {
@@ -549,6 +650,7 @@ fn render_inline(inline: &Inline, state: &mut RenderState, out: &mut String) {
             out.push_str("</del>");
         }
         Inline::CrossRef { target } => render_crossref(target, state, out),
+        Inline::Citation { key } => render_citation(key, state, out),
         Inline::FootnoteReference { name } => {
             out.push_str(&format!(
                 "<sup class=\"footnote-ref\"><a href=\"#fn-{}\">{}</a></sup>",
@@ -607,6 +709,19 @@ fn render_crossref(target: &str, state: &RenderState, out: &mut String) {
     }
 }
 
+/// Resolve a `[@key]` citation. A key with a bibliography entry becomes a
+/// numbered link into the reference list; an unknown key renders as the literal
+/// text it was written as, so plain CommonMark output is unchanged.
+fn render_citation(key: &str, state: &RenderState, out: &mut String) {
+    match state.cite_numbers.get(key) {
+        Some(number) => out.push_str(&format!(
+            "<a class=\"alt-cite\" href=\"#ref-{}\">[{number}]</a>",
+            escape_attr(key)
+        )),
+        None => out.push_str(&escape_html(&format!("[@{key}]"))),
+    }
+}
+
 /// Collect the plain text of an inline sequence (for image alt text).
 fn inline_text(inlines: &[Inline]) -> String {
     let mut text = String::new();
@@ -619,6 +734,7 @@ fn inline_text(inlines: &[Inline]) -> String {
             Inline::Link { content, .. } => text.push_str(&inline_text(content)),
             Inline::Image { alt, .. } => text.push_str(&inline_text(alt)),
             Inline::CrossRef { target } => text.push_str(target),
+            Inline::Citation { key } => text.push_str(key),
             Inline::SoftBreak | Inline::HardBreak => text.push(' '),
             _ => {}
         }
@@ -954,6 +1070,50 @@ mod tests {
             html.contains("<a class=\"alt-xref\" href=\"#fig:plot\">Figure 1</a>"),
             "{html}"
         );
+    }
+
+    #[test]
+    fn citations_number_in_order_and_list_only_cited_entries() {
+        let src = concat!(
+            "First [@b], then [@a], then [@b] again.\n\n",
+            "```bib\n",
+            "a: Author A. Title A. 2020.\n",
+            "b: Author B. Title B. 2021.\n",
+            "c: Author C. Never cited. 2022.\n",
+            "```\n\n",
+            ":::references\n:::",
+        );
+        let html = render(src);
+        // Numbered by first appearance: b is 1, a is 2; the repeat of b stays 1.
+        assert!(
+            html.contains("<a class=\"alt-cite\" href=\"#ref-b\">[1]</a>"),
+            "{html}"
+        );
+        assert!(
+            html.contains("<a class=\"alt-cite\" href=\"#ref-a\">[2]</a>"),
+            "{html}"
+        );
+        // The bibliography lists only cited entries, in citation order.
+        assert!(html.contains("<li id=\"ref-b\">Author B. Title B. 2021.</li>"), "{html}");
+        assert!(html.contains("<li id=\"ref-a\">Author A. Title A. 2020.</li>"), "{html}");
+        assert!(!html.contains("Never cited"), "uncited entry leaked: {html}");
+        let b_pos = html.find("ref-b\">Author B").expect("b in list");
+        let a_pos = html.find("ref-a\">Author A").expect("a in list");
+        assert!(b_pos < a_pos, "references not in citation order: {html}");
+    }
+
+    #[test]
+    fn undefined_citation_stays_literal_text() {
+        let html = render("a stray [@nobody] citation");
+        assert!(html.contains("[@nobody]"), "literal text lost: {html}");
+        assert!(!html.contains("alt-cite"), "should not be a link: {html}");
+    }
+
+    #[test]
+    fn bib_fence_has_no_visible_output() {
+        let html = render("```bib\na: Author A. Title. 2020.\n```");
+        assert!(!html.contains("alt-bib"), "bib rendered an element: {html}");
+        assert!(!html.contains("Author A"), "bib source leaked: {html}");
     }
 
     #[test]

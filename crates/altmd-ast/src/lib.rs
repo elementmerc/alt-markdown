@@ -149,10 +149,17 @@ pub enum Inline {
     /// A cross-reference to a labelled element elsewhere in the document, written
     /// `[#label]`. The renderer resolves it to a link whose text is the target's
     /// auto-numbered name (for example "Figure 3") or, for a section, its heading
-    /// text. An unresolved target renders as a visible marker, never dropped.
+    /// text. An unresolved target renders as the literal text, never dropped.
     CrossRef {
         /// The target label (the text between `[#` and `]`).
         target: String,
+    },
+    /// A citation to a bibliography entry, written `[@key]`. The renderer
+    /// resolves it to a numbered link (`[1]`) into the reference list when a
+    /// matching entry exists; an unresolved key renders as the literal text.
+    Citation {
+        /// The citation key (the text between `[@` and `]`).
+        key: String,
     },
     /// A hyperlink.
     Link {
