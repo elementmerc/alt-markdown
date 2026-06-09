@@ -86,17 +86,88 @@ impl CommonMarkParser {
 impl Parser for CommonMarkParser {
     fn parse(&self, source: &str) -> Result<Document, AstError> {
         let segments = split_directives(source)?;
-        let blocks = segments_to_blocks(&segments)?;
+        // Footnote definitions are document-scoped, but each text run between
+        // directives is parsed on its own, so a reference and its definition can
+        // land in different runs. Collect the definitions, re-supply them to
+        // every run so references resolve, then collapse the duplicated
+        // definition blocks back to one set at the document end.
+        let footnotes = collect_footnote_defs(source);
+        let mut blocks = segments_to_blocks(&segments, &footnotes)?;
+        relocate_footnotes(&mut blocks);
         Ok(Document { blocks })
     }
 }
 
 /// Parse a run of plain CommonMark (between directive fences) into block nodes.
-fn parse_commonmark_blocks(source: &str) -> Result<Vec<Block>, AstError> {
+/// `footnotes` is the document's collected footnote definitions, re-supplied so
+/// references in this run resolve even when their definition lives elsewhere.
+fn parse_commonmark_blocks(source: &str, footnotes: &str) -> Result<Vec<Block>, AstError> {
     let arena = comrak::Arena::new();
     let options = gfm_options();
-    let root = comrak::parse_document(&arena, source, &options);
+    let owned;
+    let text: &str = if footnotes.is_empty() {
+        source
+    } else {
+        owned = format!("{source}\n\n{footnotes}");
+        owned.as_str()
+    };
+    let root = comrak::parse_document(&arena, text, &options);
     root.children().map(|n| map_block(n, 0)).collect()
+}
+
+/// Gather the text of every footnote definition (`[^name]: ...`, plus indented
+/// continuation lines) so it can be re-supplied to each text run.
+fn collect_footnote_defs(source: &str) -> String {
+    let mut out = String::new();
+    let mut lines = source.lines().peekable();
+    while let Some(line) = lines.next() {
+        if !is_footnote_def(line) {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+        while let Some(next) = lines.peek() {
+            if next.starts_with(' ') || next.starts_with('\t') {
+                out.push_str(next);
+                out.push('\n');
+                lines.next();
+            } else {
+                break;
+            }
+        }
+    }
+    out
+}
+
+/// True if a line opens a footnote definition at column zero: `[^name]:`.
+fn is_footnote_def(line: &str) -> bool {
+    line.starts_with("[^") && line.find("]:").is_some_and(|close| close > 2)
+}
+
+/// Move every footnote definition to the end of the block list, de-duplicated by
+/// name (first wins). Re-supplying definitions to each run makes comrak emit a
+/// copy wherever a footnote is referenced; this collapses them to one set in a
+/// conventional place.
+fn relocate_footnotes(blocks: &mut Vec<Block>) {
+    let mut defs: Vec<Block> = Vec::new();
+    let mut kept: Vec<Block> = Vec::with_capacity(blocks.len());
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for block in std::mem::take(blocks) {
+        let name = match &block {
+            Block::FootnoteDefinition { name, .. } => Some(name.clone()),
+            _ => None,
+        };
+        match name {
+            Some(name) => {
+                if seen.insert(name) {
+                    defs.push(block);
+                }
+            }
+            None => kept.push(block),
+        }
+    }
+    kept.append(&mut defs);
+    *blocks = kept;
 }
 
 fn map_blocks<'a>(node: &'a AstNode<'a>, depth: usize) -> Result<Vec<Block>, AstError> {
@@ -565,11 +636,11 @@ fn split_directives(source: &str) -> Result<Vec<Segment>, AstError> {
 
 /// Turn a segment tree into block nodes, validating directive names against the
 /// registry. An unknown or non-directive name is a defined error, never silent.
-fn segments_to_blocks(segments: &[Segment]) -> Result<Vec<Block>, AstError> {
+fn segments_to_blocks(segments: &[Segment], footnotes: &str) -> Result<Vec<Block>, AstError> {
     let mut blocks = Vec::new();
     for segment in segments {
         match segment {
-            Segment::Text(text) => blocks.extend(parse_commonmark_blocks(text)?),
+            Segment::Text(text) => blocks.extend(parse_commonmark_blocks(text, footnotes)?),
             Segment::Directive {
                 name,
                 attrs,
@@ -580,10 +651,12 @@ fn segments_to_blocks(segments: &[Segment]) -> Result<Vec<Block>, AstError> {
                 if spec.kind != registry::Kind::Directive {
                     return Err(AstError::Malformed(format!("'{name}' is not a directive")));
                 }
+                // Footnote definitions are re-supplied only at the top level, so
+                // nested runs parse without them.
                 blocks.push(Block::Component(Component {
                     name: name.clone(),
                     attrs: attrs.clone(),
-                    body: ComponentBody::Children(segments_to_blocks(children)?),
+                    body: ComponentBody::Children(segments_to_blocks(children, "")?),
                 }));
             }
         }
@@ -842,7 +915,7 @@ mod tests {
     #[test]
     fn plain_markdown_is_unchanged_by_the_splitter() {
         let src = "# H\n\npara with *em*\n\n- a\n- b";
-        let direct = super::parse_commonmark_blocks(src).expect("direct parse");
+        let direct = super::parse_commonmark_blocks(src, "").expect("direct parse");
         assert_eq!(parse(src).blocks, direct);
     }
 }
