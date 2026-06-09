@@ -10,6 +10,7 @@
 //! generated tags are emitted directly (and are therefore preserved), so the
 //! output is safe by construction without a blanket sanitiser pass.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 use altmd_ast::{Attrs, Block, Component, ComponentBody, Document, Inline};
@@ -84,7 +85,8 @@ fn slugify(text: &str) -> String {
     let mut slug = String::new();
     let mut pending_hyphen = false;
     for ch in text.chars() {
-        if ch.is_ascii_alphanumeric() {
+        // Unicode-aware so non-English headings get a real anchor, not "section".
+        if ch.is_alphanumeric() {
             if pending_hyphen && !slug.is_empty() {
                 slug.push('-');
             }
@@ -537,9 +539,29 @@ fn safe_url(url: &str) -> String {
 }
 
 fn escape_html(text: &str) -> String {
-    text.replace('&', "&amp;")
+    strip_bidi_controls(text)
+        .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+/// Remove the explicit Unicode bidirectional formatting controls (embeddings and
+/// overrides U+202A..U+202E, isolates U+2066..U+2069). Real right-to-left scripts
+/// render correctly without them via the Unicode bidi algorithm, but an override
+/// in untrusted text can silently reorder the visible characters around it (the
+/// "Trojan Source" spoofing class). Zero-width joiners, which emoji sequences and
+/// scripts like Persian need, are deliberately left untouched.
+fn strip_bidi_controls(text: &str) -> Cow<'_, str> {
+    if text.chars().any(is_bidi_control) {
+        Cow::Owned(text.chars().filter(|c| !is_bidi_control(*c)).collect())
+    } else {
+        Cow::Borrowed(text)
+    }
+}
+
+/// True for the explicit bidirectional formatting controls.
+fn is_bidi_control(c: char) -> bool {
+    matches!(c, '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}')
 }
 
 fn escape_attr(text: &str) -> String {
@@ -711,6 +733,50 @@ mod tests {
             html.contains("<section class=\"footnote\" id=\"fn-a\">"),
             "definition missing: {html}"
         );
+    }
+
+    #[test]
+    fn footnote_resolves_across_a_directive() {
+        // A reference whose definition sits past a directive (a different parse
+        // run) must still become a link, not leak as literal text.
+        let html = render("text[^a]\n\n:::callout\nbox\n:::\n\nmore[^b]\n\n[^a]: one\n[^b]: two");
+        assert!(
+            html.contains("<a href=\"#fn-a\">a</a>") && html.contains("<a href=\"#fn-b\">b</a>"),
+            "refs not resolved: {html}"
+        );
+        assert!(
+            html.contains("id=\"fn-a\"") && html.contains("id=\"fn-b\""),
+            "definitions missing: {html}"
+        );
+        assert!(!html.contains("[^a]"), "ref leaked as text: {html}");
+    }
+
+    #[test]
+    fn strips_bidi_override_controls() {
+        // A right-to-left override in text must not survive: it is the Trojan
+        // Source spoofing vector and could reorder surrounding characters.
+        let html = render("before \u{202E}reversed\u{202C} after");
+        assert!(!html.contains('\u{202E}'), "RLO survived: {html:?}");
+        assert!(!html.contains('\u{202C}'), "PDF survived: {html:?}");
+        assert!(
+            html.contains("reversed") && html.contains("after"),
+            "content lost: {html}"
+        );
+    }
+
+    #[test]
+    fn keeps_zero_width_joiner_for_emoji() {
+        // The ZWJ that builds a family emoji must be preserved, not stripped.
+        let html = render("\u{1F468}\u{200D}\u{1F469}");
+        assert!(html.contains('\u{200D}'), "ZWJ stripped, emoji broken: {html:?}");
+    }
+
+    #[test]
+    fn non_english_heading_gets_a_real_anchor() {
+        // A heading with no ASCII letters still gets a meaningful, unique slug.
+        let html = render("# 日本語\n\n## café");
+        assert!(html.contains("id=\"日本語\""), "{html}");
+        assert!(html.contains("id=\"café\""), "{html}");
     }
 
     #[test]
