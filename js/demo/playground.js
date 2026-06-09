@@ -82,6 +82,7 @@ function decodeSource(encoded) {
 }
 
 let ready = false;
+let lastHtml = null;
 
 function renderNow() {
   if (!ready) {
@@ -89,7 +90,13 @@ function renderNow() {
   }
   try {
     const html = render(source.value);
-    mount(output, html);
+    // Re-mounting tears down and rebuilds every chart and diagram, so skip it
+    // when an edit did not change the rendered output (whitespace, a typo then
+    // its fix). Keeps typing smooth on a graphics-heavy document.
+    if (html !== lastHtml) {
+      mount(output, html);
+      lastHtml = html;
+    }
     status.textContent = "";
     status.classList.remove("pg-status-error");
   } catch (error) {
@@ -103,7 +110,7 @@ function renderNow() {
 let debounce;
 function scheduleRender() {
   clearTimeout(debounce);
-  debounce = setTimeout(renderNow, 150);
+  debounce = setTimeout(renderNow, 220);
 }
 
 async function loadPreset(name) {
