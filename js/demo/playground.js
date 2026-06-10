@@ -113,17 +113,68 @@ function scheduleRender() {
   debounce = setTimeout(renderNow, 220);
 }
 
-async function loadPreset(name) {
-  if (!PRESETS.has(name)) {
-    return;
+// Preset sources are cached in memory once fetched, so a repeat switch is a
+// synchronous render with no network round trip. warmUp() fills this on idle.
+const presetCache = new Map();
+
+async function fetchPreset(name) {
+  const cached = presetCache.get(name);
+  if (cached !== undefined) {
+    return cached;
   }
-  // Bypass the HTTP cache so an edited example always loads fresh.
-  const response = await fetch(`./articles/${name}.alt`, { cache: "no-cache" });
+  const response = await fetch(`./articles/${name}.alt`);
   if (!response.ok) {
     throw new Error(`HTTP ${String(response.status)}`);
   }
-  source.value = await response.text();
-  renderNow();
+  const text = await response.text();
+  presetCache.set(name, text);
+  return text;
+}
+
+function loadPreset(name) {
+  if (!PRESETS.has(name)) {
+    return;
+  }
+  const cached = presetCache.get(name);
+  if (cached !== undefined) {
+    // Instant path: already in memory, render straight away.
+    source.value = cached;
+    renderNow();
+    return;
+  }
+  fetchPreset(name)
+    .then((text) => {
+      // Drop a late result if the user has already switched away.
+      if (preset.value === name) {
+        source.value = text;
+        renderNow();
+      }
+    })
+    .catch((error) => {
+      status.textContent = `Could not load "${name}": ${String(error.message || error)}`;
+      status.classList.add("pg-status-error");
+    });
+}
+
+// On idle, pull every preset source into the cache and warm the lazy graphics
+// libraries, so the first switch to any example is instant instead of paying a
+// network round trip and a library download at click time. The runtime imports
+// the same specifiers, so the browser serves them from cache when it renders.
+function warmUp() {
+  for (const name of PRESETS) {
+    fetchPreset(name).catch(() => {});
+  }
+  void import("uplot").catch(() => {});
+  void import("katex").catch(() => {});
+  void import("mermaid").catch(() => {});
+}
+
+function whenIdle(task) {
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(task, { timeout: 2000 });
+  } else {
+    setTimeout(task, 200);
+  }
 }
 
 function initialSource() {
@@ -149,10 +200,7 @@ function wireControls() {
       renderNow();
       return;
     }
-    loadPreset(choice).catch((error) => {
-      status.textContent = `Could not load "${choice}": ${String(error.message || error)}`;
-      status.classList.add("pg-status-error");
-    });
+    loadPreset(choice);
   });
 
   document.getElementById("copy-link").addEventListener("click", async () => {
@@ -188,6 +236,7 @@ async function main() {
   await init();
   ready = true;
   renderNow();
+  whenIdle(warmUp);
 }
 
 main().catch((error) => {
