@@ -12,7 +12,7 @@ pub mod render;
 
 pub use error::CoreError;
 pub use policy::{AiPolicy, Permission, extract_policy};
-pub use render::render_document;
+pub use render::{RenderOptions, render_document, render_document_with};
 
 // One facade: downstream crates depend on these re-exports, not the sub-crates.
 pub use altmd_ast::{
@@ -70,6 +70,22 @@ pub fn parse(source: &str) -> Result<Document, CoreError> {
 /// Returns [`CoreError`] if the source contains an invalid directive.
 pub fn render(source: &str) -> Result<String, CoreError> {
     Ok(render_document(&parse(source)?))
+}
+
+/// Render alt-markdown `source` to HTML with source positions: each top-level
+/// block carries a `data-line="N"` attribute naming the source line it began on.
+/// An editor uses this to map a rendered block back to its source for scroll-sync
+/// and click-to-source. Otherwise identical to [`render`].
+///
+/// # Errors
+/// Returns [`CoreError`] if the source contains an invalid directive.
+pub fn render_with_positions(source: &str) -> Result<String, CoreError> {
+    Ok(render_document_with(
+        &parse(source)?,
+        RenderOptions {
+            source_positions: true,
+        },
+    ))
 }
 
 /// Serialise a [`Document`] back to alt-markdown source text. Normalising: the

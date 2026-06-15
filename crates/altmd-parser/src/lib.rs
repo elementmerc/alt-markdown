@@ -92,10 +92,13 @@ impl Parser for CommonMarkParser {
         // every run so references resolve, then collapse the duplicated
         // definition blocks back to one set at the document end.
         let footnotes = collect_footnote_defs(source);
-        let mut blocks = segments_to_blocks(&segments, &footnotes)?;
-        relocate_footnotes(&mut blocks);
+        let (mut blocks, mut block_lines) = segments_to_blocks_top(&segments, &footnotes)?;
+        relocate_footnotes(&mut blocks, &mut block_lines);
         recognise_references(&mut blocks);
-        Ok(Document { blocks })
+        Ok(Document {
+            blocks,
+            block_lines,
+        })
     }
 }
 
@@ -103,6 +106,16 @@ impl Parser for CommonMarkParser {
 /// `footnotes` is the document's collected footnote definitions, re-supplied so
 /// references in this run resolve even when their definition lives elsewhere.
 fn parse_commonmark_blocks(source: &str, footnotes: &str) -> Result<Vec<Block>, AstError> {
+    Ok(parse_commonmark_blocks_with_lines(source, footnotes)?.0)
+}
+
+/// As [`parse_commonmark_blocks`], but also return the comrak start line of each
+/// top-level block (1-based, relative to the parsed text). The caller offsets
+/// these by the run's starting document line to recover absolute source lines.
+fn parse_commonmark_blocks_with_lines(
+    source: &str,
+    footnotes: &str,
+) -> Result<(Vec<Block>, Vec<u32>), AstError> {
     let arena = comrak::Arena::new();
     let options = gfm_options();
     let owned;
@@ -113,7 +126,14 @@ fn parse_commonmark_blocks(source: &str, footnotes: &str) -> Result<Vec<Block>, 
         owned.as_str()
     };
     let root = comrak::parse_document(&arena, text, &options);
-    root.children().map(|n| map_block(n, 0)).collect()
+    let mut blocks = Vec::new();
+    let mut lines = Vec::new();
+    for node in root.children() {
+        let line = u32::try_from(node.data.borrow().sourcepos.start.line).unwrap_or(0);
+        blocks.push(map_block(node, 0)?);
+        lines.push(line);
+    }
+    Ok((blocks, lines))
 }
 
 /// Gather the text of every footnote definition (`[^name]: ...`, plus indented
@@ -148,27 +168,35 @@ fn is_footnote_def(line: &str) -> bool {
 /// Move every footnote definition to the end of the block list, de-duplicated by
 /// name (first wins). Re-supplying definitions to each run makes comrak emit a
 /// copy wherever a footnote is referenced; this collapses them to one set in a
-/// conventional place.
-fn relocate_footnotes(blocks: &mut Vec<Block>) {
-    let mut defs: Vec<Block> = Vec::new();
-    let mut kept: Vec<Block> = Vec::with_capacity(blocks.len());
+/// conventional place. The parallel `lines` vector is reordered in lockstep so
+/// it stays indexed alongside `blocks`.
+fn relocate_footnotes(blocks: &mut Vec<Block>, lines: &mut Vec<Option<u32>>) {
+    let mut def_blocks: Vec<Block> = Vec::new();
+    let mut def_lines: Vec<Option<u32>> = Vec::new();
+    let mut kept_blocks: Vec<Block> = Vec::with_capacity(blocks.len());
+    let mut kept_lines: Vec<Option<u32>> = Vec::with_capacity(blocks.len());
     let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for block in std::mem::take(blocks) {
-        let name = match &block {
-            Block::FootnoteDefinition { name, .. } => Some(name.clone()),
-            _ => None,
-        };
-        match name {
-            Some(name) => {
-                if seen.insert(name) {
-                    defs.push(block);
+    for (block, line) in std::mem::take(blocks)
+        .into_iter()
+        .zip(std::mem::take(lines))
+    {
+        match &block {
+            Block::FootnoteDefinition { name, .. } => {
+                if seen.insert(name.clone()) {
+                    def_blocks.push(block);
+                    def_lines.push(line);
                 }
             }
-            None => kept.push(block),
+            _ => {
+                kept_blocks.push(block);
+                kept_lines.push(line);
+            }
         }
     }
-    kept.append(&mut defs);
-    *blocks = kept;
+    kept_blocks.append(&mut def_blocks);
+    kept_lines.append(&mut def_lines);
+    *blocks = kept_blocks;
+    *lines = kept_lines;
 }
 
 /// Rewrite `[#label]` and `[@key]` runs inside text into [`Inline::CrossRef`] and
@@ -649,13 +677,21 @@ fn tokenize(input: &str) -> Vec<String> {
 }
 
 /// A segment of a document: either a run of plain markdown text or a container
-/// directive with its own (recursively segmented) children.
+/// directive with its own (recursively segmented) children. Each carries the
+/// 1-based document line it begins on, so a top-level block can be traced back
+/// to its source line for scroll-sync.
 enum Segment {
-    Text(String),
+    Text {
+        text: String,
+        /// 1-based document line of the first buffered line of this text run.
+        line: u32,
+    },
     Directive {
         name: String,
         attrs: Attrs,
         children: Vec<Segment>,
+        /// 1-based document line of the directive's opening `:::` fence.
+        line: u32,
     },
 }
 
@@ -666,6 +702,11 @@ struct Frame {
     colons: usize,
     segments: Vec<Segment>,
     text: Vec<String>,
+    /// Document line of this directive's opening fence (0 for the root frame).
+    open_line: u32,
+    /// Document line of the first line buffered into `text`, set on first push
+    /// and cleared on flush.
+    text_start_line: Option<u32>,
 }
 
 impl Frame {
@@ -676,17 +717,30 @@ impl Frame {
             colons: 0,
             segments: Vec::new(),
             text: Vec::new(),
+            open_line: 0,
+            text_start_line: None,
         }
     }
 
-    fn new(name: String, attrs: Attrs, colons: usize) -> Self {
+    fn new(name: String, attrs: Attrs, colons: usize, open_line: u32) -> Self {
         Self {
             name,
             attrs,
             colons,
             segments: Vec::new(),
             text: Vec::new(),
+            open_line,
+            text_start_line: None,
         }
+    }
+
+    /// Buffer a body line, remembering its document line as the run's start when
+    /// the buffer was empty.
+    fn push_text_line(&mut self, line: &str, line_no: u32) {
+        if self.text.is_empty() {
+            self.text_start_line = Some(line_no);
+        }
+        self.text.push(line.to_owned());
     }
 
     fn flush_text(&mut self) {
@@ -694,7 +748,8 @@ impl Frame {
             return;
         }
         let text = std::mem::take(&mut self.text).join("\n");
-        self.segments.push(Segment::Text(text));
+        let line = self.text_start_line.take().unwrap_or(0);
+        self.segments.push(Segment::Text { text, line });
     }
 }
 
@@ -735,7 +790,8 @@ fn parse_close(line: &str) -> Option<usize> {
 fn split_directives(source: &str) -> Result<Vec<Segment>, AstError> {
     let mut stack: Vec<Frame> = vec![Frame::root()];
 
-    for line in source.lines() {
+    for (index, line) in source.lines().enumerate() {
+        let line_no = u32::try_from(index + 1).unwrap_or(u32::MAX);
         if let Some((colons, name, attrs)) = parse_open(line) {
             // The root frame occupies one slot, so the live directive depth is
             // stack.len() - 1; cap it before pushing to keep segments_to_blocks'
@@ -748,7 +804,7 @@ fn split_directives(source: &str) -> Result<Vec<Segment>, AstError> {
             if let Some(top) = stack.last_mut() {
                 top.flush_text();
             }
-            stack.push(Frame::new(name, attrs, colons));
+            stack.push(Frame::new(name, attrs, colons, line_no));
             continue;
         }
 
@@ -763,6 +819,7 @@ fn split_directives(source: &str) -> Result<Vec<Segment>, AstError> {
                         name: frame.name,
                         attrs: frame.attrs,
                         children: frame.segments,
+                        line: frame.open_line,
                     };
                     if let Some(parent) = stack.last_mut() {
                         parent.segments.push(segment);
@@ -773,7 +830,7 @@ fn split_directives(source: &str) -> Result<Vec<Segment>, AstError> {
         }
 
         if let Some(top) = stack.last_mut() {
-            top.text.push(line.to_owned());
+            top.push_text_line(line, line_no);
         }
     }
 
@@ -795,28 +852,78 @@ fn segments_to_blocks(segments: &[Segment], footnotes: &str) -> Result<Vec<Block
     let mut blocks = Vec::new();
     for segment in segments {
         match segment {
-            Segment::Text(text) => blocks.extend(parse_commonmark_blocks(text, footnotes)?),
+            Segment::Text { text, .. } => {
+                blocks.extend(parse_commonmark_blocks(text, footnotes)?);
+            }
             Segment::Directive {
                 name,
                 attrs,
                 children,
+                ..
             } => {
-                let spec = registry::lookup(name)
-                    .ok_or_else(|| AstError::Malformed(format!("unknown directive: {name}")))?;
-                if spec.kind != registry::Kind::Directive {
-                    return Err(AstError::Malformed(format!("'{name}' is not a directive")));
-                }
-                // Footnote definitions are re-supplied only at the top level, so
-                // nested runs parse without them.
-                blocks.push(Block::Component(Component {
-                    name: name.clone(),
-                    attrs: attrs.clone(),
-                    body: ComponentBody::Children(segments_to_blocks(children, "")?),
-                }));
+                blocks.push(directive_block(name, attrs, children)?);
             }
         }
     }
     Ok(blocks)
+}
+
+/// As [`segments_to_blocks`], but for the top level: also return the 1-based
+/// source line of each emitted block, indexed alongside the blocks. A text run's
+/// blocks take their comrak line offset by the run's starting document line; a
+/// directive takes its opening fence line. Footnote definitions, which are
+/// parsed from the re-supplied appendix, get `None` (they are relocated and
+/// their real source line is not recovered in this version).
+fn segments_to_blocks_top(
+    segments: &[Segment],
+    footnotes: &str,
+) -> Result<(Vec<Block>, Vec<Option<u32>>), AstError> {
+    let mut blocks = Vec::new();
+    let mut lines = Vec::new();
+    for segment in segments {
+        match segment {
+            Segment::Text { text, line } => {
+                let (segment_blocks, comrak_lines) =
+                    parse_commonmark_blocks_with_lines(text, footnotes)?;
+                let offset = line.saturating_sub(1);
+                for (block, comrak_line) in segment_blocks.into_iter().zip(comrak_lines) {
+                    let doc_line = if matches!(block, Block::FootnoteDefinition { .. }) {
+                        None
+                    } else {
+                        Some(comrak_line.saturating_add(offset))
+                    };
+                    blocks.push(block);
+                    lines.push(doc_line);
+                }
+            }
+            Segment::Directive {
+                name,
+                attrs,
+                children,
+                line,
+            } => {
+                blocks.push(directive_block(name, attrs, children)?);
+                lines.push(Some(*line));
+            }
+        }
+    }
+    Ok((blocks, lines))
+}
+
+/// Build one directive component block, validating the name against the
+/// registry. Nested children parse without re-supplied footnotes (those are a
+/// top-level concern) and carry no line information (only the top level does).
+fn directive_block(name: &str, attrs: &Attrs, children: &[Segment]) -> Result<Block, AstError> {
+    let spec = registry::lookup(name)
+        .ok_or_else(|| AstError::Malformed(format!("unknown directive: {name}")))?;
+    if spec.kind != registry::Kind::Directive {
+        return Err(AstError::Malformed(format!("'{name}' is not a directive")));
+    }
+    Ok(Block::Component(Component {
+        name: name.to_owned(),
+        attrs: attrs.clone(),
+        body: ComponentBody::Children(segments_to_blocks(children, "")?),
+    }))
 }
 
 #[cfg(test)]
@@ -1131,6 +1238,37 @@ mod tests {
         let src = super::MarkdownSerializer::new().to_source(&doc);
         assert!(src.contains("[@smith2020]"), "lost the citation: {src}");
         assert_eq!(parse(&src).blocks, doc.blocks, "round-trip changed the AST");
+    }
+
+    #[test]
+    fn captures_top_level_source_lines() {
+        // Heading on line 1, paragraph on line 3, directive opener on line 5.
+        let doc = parse("# A\n\npara\n\n:::callout\nx\n:::\n");
+        assert_eq!(doc.blocks.len(), 3);
+        assert_eq!(doc.block_lines, vec![Some(1), Some(3), Some(5)]);
+    }
+
+    #[test]
+    fn block_lines_track_a_run_after_a_directive() {
+        // A text run that begins after a directive is offset to its true line.
+        let doc = parse(":::callout\nx\n:::\n\nafter\n");
+        assert_eq!(doc.blocks.len(), 2);
+        // Directive opener on line 1; the paragraph "after" on line 5.
+        assert_eq!(doc.block_lines, vec![Some(1), Some(5)]);
+    }
+
+    #[test]
+    fn block_lines_stay_parallel_to_blocks() {
+        let doc = parse("# H\n\npara\n\n- a\n- b\n\n```rust\nx\n```\n");
+        assert_eq!(doc.block_lines.len(), doc.blocks.len());
+    }
+
+    #[test]
+    fn relocated_footnote_definition_has_no_line() {
+        let doc = parse("text[^a]\n\n[^a]: note\n");
+        // The footnote definition moves to the end and loses its line.
+        assert_eq!(doc.block_lines.len(), doc.blocks.len());
+        assert_eq!(doc.block_lines.last(), Some(&None));
     }
 
     #[test]
