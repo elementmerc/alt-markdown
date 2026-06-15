@@ -24,6 +24,20 @@ pub fn render(source: &str) -> Result<String, wasm_bindgen::JsError> {
     altmd_core::render(source).map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))
 }
 
+/// Render alt-markdown `source` to component-aware HTML with source positions:
+/// each top-level block carries a `data-line="N"` attribute naming the 1-based
+/// source line it began on. An editor uses these to map a rendered block back to
+/// its source for scroll-sync and click-to-source. Exposed to JavaScript as
+/// `render_with_positions`.
+///
+/// # Errors
+/// Returns a JavaScript error if the source contains an invalid directive.
+#[wasm_bindgen]
+pub fn render_with_positions(source: &str) -> Result<String, wasm_bindgen::JsError> {
+    altmd_core::render_with_positions(source)
+        .map_err(|err| wasm_bindgen::JsError::new(&err.to_string()))
+}
+
 /// Normalise alt-markdown `source`: parse it and serialise it back to canonical
 /// source text. This is the round-trip an editing host (Alexandria) uses to
 /// read, edit, and write a document. Exposed to JavaScript as `normalise`.

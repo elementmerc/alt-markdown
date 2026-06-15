@@ -43,7 +43,12 @@ pub fn resolve_document(document: Document, file: &Path) -> Result<Document> {
     // is caught as a cycle.
     let mut stack = vec![canon_file];
     let blocks = resolve(document.blocks, &jail, &jail, &mut stack, 0)?;
-    Ok(Document { blocks })
+    // Splicing includes changes the top-level block list, so the source line map
+    // no longer applies; drop it rather than carry stale lines.
+    Ok(Document {
+        blocks,
+        ..Default::default()
+    })
 }
 
 /// Resolve includes in a block sequence. `current_dir` is the directory relative

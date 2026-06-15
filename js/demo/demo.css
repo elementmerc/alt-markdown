@@ -286,6 +286,47 @@ li.task-list-item {
   list-style: none;
 }
 
+/* Footnotes -------------------------------------------------------------- */
+
+/* The inline marker: a small raised number that links down to the note. */
+.footnote-ref {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
+.footnote-ref a {
+  text-decoration: none;
+  padding: 0 0.1em;
+}
+
+/* The notes themselves read as a quieter, smaller block. A rule above the
+   first note separates it from the body text. */
+.footnote {
+  display: flex;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.footnote:first-of-type {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.footnote p {
+  margin: 0 0 0.5rem;
+}
+
+/* The leading number doubles as the back-link to where the note was cited. */
+.footnote-backref {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--accent);
+}
+
 .alt-visually-hidden {
   position: absolute;
   width: 1px;

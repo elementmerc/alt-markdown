@@ -49,6 +49,29 @@ struct RenderState {
     bib: HashMap<String, String>,
     cited: Vec<String>,
     cite_numbers: HashMap<String, u32>,
+    /// Footnote label to its displayed number, assigned by first-reference order.
+    /// Both the inline marker and the definition list read from this, so the two
+    /// always agree.
+    footnote_numbers: HashMap<String, u32>,
+    /// When true, stamp each top-level block with its source line (see
+    /// [`RenderOptions::source_positions`]).
+    source_positions: bool,
+    /// Source line per top-level block, indexed in document order; mirrors the
+    /// document's `block_lines`. Read by the top-level walk to set `pending_line`.
+    block_lines: Vec<Option<u32>>,
+    /// The line to stamp on the next opening tag, set before each top-level block
+    /// and consumed by the first tag it emits so nested tags are not stamped.
+    pending_line: Option<u32>,
+}
+
+/// Options controlling how a [`Document`] is rendered.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct RenderOptions {
+    /// Emit a `data-line="N"` attribute on each top-level block, where `N` is the
+    /// 1-based source line it began on. This lets an editor map a rendered block
+    /// back to its source for scroll-sync and click-to-source. Off by default, so
+    /// the standard render output is unchanged.
+    pub source_positions: bool,
 }
 
 /// The result of the single pre-pass over the document: the heading list (for
@@ -65,11 +88,21 @@ struct Prepass {
     cite_seen: HashSet<String>,
     /// Bibliography entries (`key` to reference text) gathered from `bib` fences.
     bib: HashMap<String, String>,
+    /// Footnote labels in first-reference order, and the set used to dedupe them.
+    /// A footnote's displayed marker is its position here, not its label.
+    footnote_order: Vec<String>,
+    footnote_seen: HashSet<String>,
 }
 
-/// Render a [`Document`] to an HTML string.
+/// Render a [`Document`] to an HTML string with the default options.
 #[must_use]
 pub fn render_document(document: &Document) -> String {
+    render_document_with(document, RenderOptions::default())
+}
+
+/// Render a [`Document`] to an HTML string with explicit [`RenderOptions`].
+#[must_use]
+pub fn render_document_with(document: &Document, options: RenderOptions) -> String {
     let mut pre = Prepass::default();
     collect_labels(&document.blocks, &mut pre);
     // Number the citations that have a matching bibliography entry, in the order
@@ -83,6 +116,12 @@ pub fn render_document(document: &Document) -> String {
             cited.push(key.clone());
         }
     }
+    // Number footnotes by first-reference order. comrak only produces a reference
+    // node when a matching definition exists, so every referenced label is real.
+    let mut footnote_numbers = HashMap::new();
+    for name in &pre.footnote_order {
+        footnote_numbers.insert(name.clone(), footnote_numbers.len() as u32 + 1);
+    }
     let mut state = RenderState {
         headings: pre.headings,
         cursor: 0,
@@ -91,9 +130,13 @@ pub fn render_document(document: &Document) -> String {
         bib: pre.bib,
         cited,
         cite_numbers,
+        footnote_numbers,
+        source_positions: options.source_positions,
+        block_lines: document.block_lines.clone(),
+        pending_line: None,
     };
     let mut out = String::new();
-    render_blocks(&document.blocks, &mut state, &mut out);
+    render_top_blocks(&document.blocks, &mut state, &mut out);
     out
 }
 
@@ -121,16 +164,16 @@ fn collect_labels(blocks: &[Block], pre: &mut Prepass) {
                     slug,
                     text,
                 });
-                scan_citations(content, pre);
+                scan_inline_refs(content, pre);
             }
-            Block::Paragraph(content) => scan_citations(content, pre),
+            Block::Paragraph(content) => scan_inline_refs(content, pre),
             Block::Table(table) => {
                 for cell in &table.header {
-                    scan_citations(cell, pre);
+                    scan_inline_refs(cell, pre);
                 }
                 for row in &table.rows {
                     for cell in row {
-                        scan_citations(cell, pre);
+                        scan_inline_refs(cell, pre);
                     }
                 }
             }
@@ -183,19 +226,26 @@ fn figure_kind(attrs: &Attrs) -> (&'static str, &'static str) {
     }
 }
 
-/// Record any `[@key]` citations in an inline sequence in first-appearance order,
-/// recursing into the formatted spans that can hold them.
-fn scan_citations(inlines: &[Inline], pre: &mut Prepass) {
+/// Record the numbered references in an inline sequence in first-appearance
+/// order: `[@key]` citations and `[^label]` footnotes. Both are displayed by the
+/// order they first appear, not by their key or label, so the order is captured
+/// here in the pre-pass and read back at render time. Recurses into the formatted
+/// spans that can hold them.
+fn scan_inline_refs(inlines: &[Inline], pre: &mut Prepass) {
     for inline in inlines {
         match inline {
             Inline::Citation { key } if !pre.cite_seen.contains(key) => {
                 pre.cite_seen.insert(key.clone());
                 pre.cite_order.push(key.clone());
             }
+            Inline::FootnoteReference { name } if !pre.footnote_seen.contains(name) => {
+                pre.footnote_seen.insert(name.clone());
+                pre.footnote_order.push(name.clone());
+            }
             Inline::Emphasis(content)
             | Inline::Strong(content)
-            | Inline::Strikethrough(content) => scan_citations(content, pre),
-            Inline::Link { content, .. } => scan_citations(content, pre),
+            | Inline::Strikethrough(content) => scan_inline_refs(content, pre),
+            Inline::Link { content, .. } => scan_inline_refs(content, pre),
             _ => {}
         }
     }
@@ -257,6 +307,33 @@ fn unique_slug(base: &str, seen: &mut HashMap<String, u32>) -> String {
     slug
 }
 
+impl RenderState {
+    /// The ` data-line="N"` attribute to splice into the opening tag of the
+    /// current top-level block, if source positions are enabled and a line is
+    /// pending. Consumes the pending line so only the block's outermost tag is
+    /// stamped, never its nested tags or later siblings.
+    fn take_line_attr(&mut self) -> String {
+        match self.pending_line.take() {
+            Some(line) => format!(" data-line=\"{line}\""),
+            None => String::new(),
+        }
+    }
+}
+
+/// Render the top-level blocks, setting the pending source line before each so
+/// its outermost tag carries a `data-line`. Nested blocks render through
+/// [`render_blocks`] with no pending line, so only top-level blocks are stamped.
+fn render_top_blocks(blocks: &[Block], state: &mut RenderState, out: &mut String) {
+    for (index, block) in blocks.iter().enumerate() {
+        state.pending_line = if state.source_positions {
+            state.block_lines.get(index).copied().flatten()
+        } else {
+            None
+        };
+        render_block(block, state, out);
+    }
+}
+
 fn render_blocks(blocks: &[Block], state: &mut RenderState, out: &mut String) {
     for block in blocks {
         render_block(block, state, out);
@@ -282,29 +359,35 @@ fn render_block(block: &Block, state: &mut RenderState, out: &mut String) {
             let level = (*level).clamp(1, 6);
             let slug = state.headings.get(state.cursor).map(|h| h.slug.clone());
             state.cursor += 1;
+            let line = state.take_line_attr();
             match slug {
-                Some(slug) => out.push_str(&format!("<h{level} id=\"{}\">", escape_attr(&slug))),
-                None => out.push_str(&format!("<h{level}>")),
+                Some(slug) => {
+                    out.push_str(&format!("<h{level}{line} id=\"{}\">", escape_attr(&slug)));
+                }
+                None => out.push_str(&format!("<h{level}{line}>")),
             }
             render_inlines(content, state, out);
             out.push_str(&format!("</h{level}>\n"));
         }
         Block::Paragraph(content) => {
-            out.push_str("<p>");
+            let line = state.take_line_attr();
+            out.push_str(&format!("<p{line}>"));
             render_inlines(content, state, out);
             out.push_str("</p>\n");
         }
         Block::BlockQuote(blocks) => {
-            out.push_str("<blockquote>\n");
+            let line = state.take_line_attr();
+            out.push_str(&format!("<blockquote{line}>\n"));
             render_blocks(blocks, state, out);
             out.push_str("</blockquote>\n");
         }
         Block::List(list) => {
             let tag = if list.ordered { "ol" } else { "ul" };
+            let line = state.take_line_attr();
             if list.ordered && list.start != 1 {
-                out.push_str(&format!("<ol start=\"{}\">\n", list.start));
+                out.push_str(&format!("<ol{line} start=\"{}\">\n", list.start));
             } else {
-                out.push_str(&format!("<{tag}>\n"));
+                out.push_str(&format!("<{tag}{line}>\n"));
             }
             for item in &list.items {
                 match item.task {
@@ -325,34 +408,60 @@ fn render_block(block: &Block, state: &mut RenderState, out: &mut String) {
         }
         Block::CodeBlock { info, literal } => {
             let lang = info.split_whitespace().next().unwrap_or_default();
+            let line = state.take_line_attr();
             if lang.is_empty() {
-                out.push_str("<pre><code>");
+                out.push_str(&format!("<pre{line}><code>"));
             } else {
                 out.push_str(&format!(
-                    "<pre><code class=\"language-{}\">",
+                    "<pre{line}><code class=\"language-{}\">",
                     escape_attr(lang)
                 ));
             }
             out.push_str(&escape_html(literal));
             out.push_str("</code></pre>\n");
         }
-        Block::ThematicBreak => out.push_str("<hr />\n"),
-        Block::Table(table) => render_table(table, state, out),
+        Block::ThematicBreak => {
+            let line = state.take_line_attr();
+            out.push_str(&format!("<hr{line} />\n"));
+        }
+        Block::Table(table) => {
+            let line = state.take_line_attr();
+            render_table(table, &line, state, out);
+        }
         Block::FootnoteDefinition { name, blocks } => {
+            let line = state.take_line_attr();
+            let escaped = escape_attr(name);
+            // The definition leads with its own number (matching the marker that
+            // referenced it) and a back-link to where it was cited.
+            let number = state.footnote_numbers.get(name).copied().unwrap_or(0);
             out.push_str(&format!(
-                "<section class=\"footnote\" id=\"fn-{}\">\n",
-                escape_attr(name)
+                "<section{line} class=\"footnote\" id=\"fn-{escaped}\">\n\
+                 <a class=\"footnote-backref\" href=\"#fnref-{escaped}\" \
+                 aria-label=\"Back to reference {number}\">{number}</a>\n"
             ));
             render_blocks(blocks, state, out);
             out.push_str("</section>\n");
         }
-        Block::HtmlBlock(html) => out.push_str(&altmd_sanitize::sanitize(html)),
-        Block::Component(component) => render_component(component, state, out),
+        Block::HtmlBlock(html) => {
+            // A raw HTML block has no single wrapper tag to stamp; consume the
+            // pending line so it does not leak onto a later element.
+            let _ = state.take_line_attr();
+            out.push_str(&altmd_sanitize::sanitize(html));
+        }
+        Block::Component(component) => {
+            let line = state.take_line_attr();
+            render_component(component, &line, state, out);
+        }
         _ => {}
     }
 }
 
-fn render_table(table: &altmd_ast::Table, state: &mut RenderState, out: &mut String) {
+fn render_table(
+    table: &altmd_ast::Table,
+    line_attr: &str,
+    state: &mut RenderState,
+    out: &mut String,
+) {
     use altmd_ast::Alignment;
     let style = |col: usize| match table.alignments.get(col) {
         Some(Alignment::Left) => " style=\"text-align:left\"",
@@ -360,7 +469,7 @@ fn render_table(table: &altmd_ast::Table, state: &mut RenderState, out: &mut Str
         Some(Alignment::Right) => " style=\"text-align:right\"",
         _ => "",
     };
-    out.push_str("<table>\n<thead>\n<tr>\n");
+    out.push_str(&format!("<table{line_attr}>\n<thead>\n<tr>\n"));
     for (col, cell) in table.header.iter().enumerate() {
         out.push_str(&format!("<th{}>", style(col)));
         render_inlines(cell, state, out);
@@ -383,7 +492,12 @@ fn render_table(table: &altmd_ast::Table, state: &mut RenderState, out: &mut Str
     out.push_str("</table>\n");
 }
 
-fn render_component(component: &Component, state: &mut RenderState, out: &mut String) {
+fn render_component(
+    component: &Component,
+    line_attr: &str,
+    state: &mut RenderState,
+    out: &mut String,
+) {
     // Component names come from the registry, so they are already safe element
     // identifiers; guard anyway against an unexpected name.
     if !is_safe_name(&component.name) {
@@ -392,11 +506,12 @@ fn render_component(component: &Component, state: &mut RenderState, out: &mut St
     // A figure is a numbered, captioned wrapper rendered as native semantic HTML
     // (no runtime needed), not an upgradeable custom element.
     if component.name == "figure" {
-        render_figure(component, state, out);
+        render_figure(component, line_attr, state, out);
         return;
     }
     // A bib fence is bibliography data consumed by the pre-pass; it has no visible
-    // output of its own (the formatted list is rendered by :::references).
+    // output of its own (the formatted list is rendered by :::references). Its
+    // pending line, if any, has nothing to attach to and is simply dropped.
     if component.name == "bib" {
         return;
     }
@@ -408,6 +523,7 @@ fn render_component(component: &Component, state: &mut RenderState, out: &mut St
     let tag = format!("alt-{}", component.name);
     out.push('<');
     out.push_str(&tag);
+    out.push_str(line_attr);
     render_attrs(&component.attrs, out);
     out.push('>');
     render_fallback(component, state, out);
@@ -418,12 +534,17 @@ fn render_component(component: &Component, state: &mut RenderState, out: &mut St
 /// number comes from a render-time per-kind counter that advances in the same
 /// document order as the pre-pass, so it matches the number a cross-reference to
 /// this figure shows.
-fn render_figure(component: &Component, state: &mut RenderState, out: &mut String) {
+fn render_figure(
+    component: &Component,
+    line_attr: &str,
+    state: &mut RenderState,
+    out: &mut String,
+) {
     let (key, prefix) = figure_kind(&component.attrs);
     let counter = state.fig_counters.entry(key.to_owned()).or_insert(0);
     *counter += 1;
     let number = *counter;
-    out.push_str("<figure");
+    out.push_str(&format!("<figure{line_attr}"));
     if let Some(id) = &component.attrs.id {
         out.push_str(&format!(" id=\"{}\"", escape_attr(id)));
     }
@@ -673,10 +794,13 @@ fn render_inline(inline: &Inline, state: &mut RenderState, out: &mut String) {
         Inline::CrossRef { target } => render_crossref(target, state, out),
         Inline::Citation { key } => render_citation(key, state, out),
         Inline::FootnoteReference { name } => {
+            // The visible marker is the footnote's number, not its label. The
+            // `fnref` id is the target the definition's back-link returns to.
+            let number = state.footnote_numbers.get(name).copied().unwrap_or(0);
             out.push_str(&format!(
-                "<sup class=\"footnote-ref\"><a href=\"#fn-{}\">{}</a></sup>",
+                "<sup class=\"footnote-ref\" id=\"fnref-{0}\"><a href=\"#fn-{0}\">{1}</a></sup>",
                 escape_attr(name),
-                escape_html(name)
+                number
             ));
         }
         Inline::Code(text) => {
@@ -818,13 +942,52 @@ fn escape_attr(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::render_document;
+    use super::{RenderOptions, render_document, render_document_with};
     use altmd_ast::Parser;
     use altmd_parser::CommonMarkParser;
 
     fn render(source: &str) -> String {
         let doc = CommonMarkParser::new().parse(source).expect("parse");
         render_document(&doc)
+    }
+
+    fn render_positioned(source: &str) -> String {
+        let doc = CommonMarkParser::new().parse(source).expect("parse");
+        render_document_with(
+            &doc,
+            RenderOptions {
+                source_positions: true,
+            },
+        )
+    }
+
+    #[test]
+    fn source_positions_off_emit_no_data_line() {
+        // The default render path must be byte-for-byte free of data-line.
+        let html = render("# Title\n\npara\n\n- a\n- b\n\n:::callout\nx\n:::\n");
+        assert!(!html.contains("data-line"), "{html}");
+    }
+
+    #[test]
+    fn source_positions_stamp_top_level_blocks() {
+        // Heading line 1, paragraph line 3, directive opener line 5.
+        let html = render_positioned("# Title\n\npara\n\n:::callout\nx\n:::\n");
+        assert!(html.contains("<h1 data-line=\"1\" id=\"title\">"), "{html}");
+        assert!(html.contains("<p data-line=\"3\">"), "{html}");
+        assert!(html.contains("<alt-callout data-line=\"5\""), "{html}");
+    }
+
+    #[test]
+    fn source_positions_stamp_only_the_outermost_tag() {
+        // A blockquote's children and a list's items are nested, so only the
+        // blockquote and the list itself carry data-line, never the inner tags.
+        let html = render_positioned("> quoted\n\n- a\n- b\n");
+        assert!(html.contains("<blockquote data-line=\"1\">"), "{html}");
+        // The paragraph inside the blockquote has no data-line.
+        assert!(html.contains("<blockquote data-line=\"1\">\n<p>"), "{html}");
+        assert!(html.contains("<ul data-line=\"3\">"), "{html}");
+        assert!(html.contains("<li>"), "{html}");
+        assert!(!html.contains("<li data-line"), "{html}");
     }
 
     #[test]
@@ -973,13 +1136,42 @@ mod tests {
     #[test]
     fn renders_gfm_footnotes() {
         let html = render("text[^a]\n\n[^a]: note");
+        // The marker is the number 1, not the label "a"; it carries an fnref id so
+        // the definition can link back to it.
         assert!(
-            html.contains("<sup class=\"footnote-ref\"><a href=\"#fn-a\">a</a></sup>"),
-            "ref missing: {html}"
+            html.contains(
+                "<sup class=\"footnote-ref\" id=\"fnref-a\"><a href=\"#fn-a\">1</a></sup>"
+            ),
+            "numbered ref missing: {html}"
         );
         assert!(
             html.contains("<section class=\"footnote\" id=\"fn-a\">"),
             "definition missing: {html}"
+        );
+        // The definition leads with its number and a back-link to the marker.
+        assert!(
+            html.contains("<a class=\"footnote-backref\" href=\"#fnref-a\""),
+            "back-link missing: {html}"
+        );
+    }
+
+    #[test]
+    fn footnotes_number_by_reference_order_not_label() {
+        // Labels are out of alphabetical order on purpose: the first referenced
+        // ("zeta") must be 1 and the second ("alpha") must be 2.
+        let html = render("one[^zeta] two[^alpha]\n\n[^zeta]: z\n[^alpha]: a");
+        assert!(
+            html.contains("<a href=\"#fn-zeta\">1</a>"),
+            "zeta should be 1: {html}"
+        );
+        assert!(
+            html.contains("<a href=\"#fn-alpha\">2</a>"),
+            "alpha should be 2: {html}"
+        );
+        // The label words never appear as visible marker text.
+        assert!(
+            !html.contains(">zeta</a>") && !html.contains(">alpha</a>"),
+            "label leaked as marker: {html}"
         );
     }
 
@@ -989,8 +1181,8 @@ mod tests {
         // run) must still become a link, not leak as literal text.
         let html = render("text[^a]\n\n:::callout\nbox\n:::\n\nmore[^b]\n\n[^a]: one\n[^b]: two");
         assert!(
-            html.contains("<a href=\"#fn-a\">a</a>") && html.contains("<a href=\"#fn-b\">b</a>"),
-            "refs not resolved: {html}"
+            html.contains("<a href=\"#fn-a\">1</a>") && html.contains("<a href=\"#fn-b\">2</a>"),
+            "refs not resolved or misnumbered: {html}"
         );
         assert!(
             html.contains("id=\"fn-a\"") && html.contains("id=\"fn-b\""),

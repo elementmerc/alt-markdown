@@ -27,6 +27,15 @@ pub struct Span {
 pub struct Document {
     /// Top-level block nodes in document order.
     pub blocks: Vec<Block>,
+    /// 1-based source start line for each top-level block, indexed alongside
+    /// [`blocks`](Self::blocks). An entry is `None` when the line is unknown
+    /// (for example a relocated footnote definition); a shorter or empty vector
+    /// means no line information at all. Purely additive: the serializer and the
+    /// policy reader never consult it, and the renderer only emits it when
+    /// source positions are requested. It exists so an editor can map a rendered
+    /// block back to its source line for scroll-sync and click-to-source.
+    #[serde(default)]
+    pub block_lines: Vec<Option<u32>>,
 }
 
 /// Block-level content. Component nodes arrive in Phase 2.
